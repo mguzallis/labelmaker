@@ -17,6 +17,18 @@ import pdfplumber
 
 SECTION_TITLE = "Product Application"
 
+# Heading names the application/directions section has gone by. The older
+# TDS layout calls it "Product Application" (bulleted, in the front-page
+# columns); the newer layout puts "Application Instructions" on the BACK
+# page as plain sentences/paragraphs. Tried in this order.
+SECTION_TITLES = [
+    "Product Application",
+    "Application Instructions",
+    "Directions for Use",
+    "Directions For Use",
+    "Application Directions",
+]
+
 
 def find_column_split(page, min_gap=8):
     """Detect the x-coordinate of the gutter between two columns.
@@ -52,7 +64,54 @@ def find_column_split(page, min_gap=8):
     return best_mid
 
 
-def extract_columns_text(page):
+def _words_to_text(words, mark_paragraphs=False):
+    """Reconstruct line-broken text from a word list, grouping words into
+    lines by vertical position (words on the same line share a similar
+    'top' value). With mark_paragraphs, a blank line is emitted wherever the
+    vertical gap between two lines is clearly larger than the normal line
+    pitch -- that is how paragraph breaks show up in a PDF with no bullet
+    glyphs."""
+    if not words:
+        return ""
+    words = sorted(words, key=lambda w: (round(w["top"]), w["x0"]))
+    lines, tops, rights = [], [], []
+    current_line, current_top, cur_right = [], None, 0
+    for w in words:
+        top = round(w["top"])
+        if current_top is None or abs(top - current_top) <= 2:
+            current_line.append(w["text"])
+            cur_right = max(cur_right, w["x1"])
+            if current_top is None:
+                current_top, exact_top = top, w["top"]
+        else:
+            lines.append(" ".join(current_line)); tops.append(exact_top); rights.append(cur_right)
+            current_line = [w["text"]]
+            current_top, exact_top, cur_right = top, w["top"], w["x1"]
+    if current_line:
+        lines.append(" ".join(current_line)); tops.append(exact_top); rights.append(cur_right)
+    if not mark_paragraphs or len(lines) < 3:
+        return "\n".join(lines)
+    gaps = [b - a for a, b in zip(tops, tops[1:])]
+    pitch = sorted(gaps)[len(gaps) // 2]   # median line pitch
+    left_edge = min(w["x0"] for w in words)
+    full_w = max(rights) - left_edge
+    out = [lines[0]]
+    for gap, prev_line, prev_right, line in zip(gaps, lines, rights, lines[1:]):
+        # A paragraph break needs the previous line to have FINISHED a
+        # sentence, plus either extra vertical space beyond the usual line
+        # pitch, or that line stopping well short of the column's full width
+        # (a ragged last line -- how paragraphs end when the PDF has no
+        # extra spacing between them).
+        ends_sentence = prev_line.rstrip().endswith((".", "!", "?", ":"))
+        extra_space = pitch > 0 and gap > pitch * 1.15
+        short_line = (prev_right - left_edge) < 0.8 * full_w
+        if ends_sentence and (extra_space or short_line):
+            out.append("")
+        out.append(line)
+    return "\n".join(out)
+
+
+def extract_columns_text(page, mark_paragraphs=False):
     """Return a list of text blocks, one per detected column (or a single
     block if the page is single-column).
 
@@ -67,56 +126,141 @@ def extract_columns_text(page):
     """
     split_x = find_column_split(page)
     if split_x is None:
+        if mark_paragraphs:
+            return [_words_to_text(page.extract_words(), mark_paragraphs=True)]
         return [page.extract_text() or ""]
 
     words = page.extract_words()
     left_words = [w for w in words if (w["x0"] + w["x1"]) / 2 < split_x]
     right_words = [w for w in words if (w["x0"] + w["x1"]) / 2 >= split_x]
 
-    def _words_to_text(words):
-        """Reconstruct line-broken text from a word list, grouping words
-        into lines by vertical position (words on the same line share a
-        similar 'top' value)."""
-        if not words:
-            return ""
-        words = sorted(words, key=lambda w: (round(w["top"]), w["x0"]))
-        lines, current_line, current_top = [], [], None
-        for w in words:
-            top = round(w["top"])
-            if current_top is None or abs(top - current_top) <= 2:
-                current_line.append(w["text"])
-                current_top = top if current_top is None else current_top
-            else:
-                lines.append(" ".join(current_line))
-                current_line = [w["text"]]
-                current_top = top
-        if current_line:
-            lines.append(" ".join(current_line))
-        return "\n".join(lines)
-
-    return [_words_to_text(left_words), _words_to_text(right_words)]
+    return [_words_to_text(left_words, mark_paragraphs), _words_to_text(right_words, mark_paragraphs)]
 
 
 def extract_product_application_bullets(pdf_path):
-    """Find the 'Product Application' heading across all pages/columns and
-    return its bullet points as a clean list, preserving original wording.
+    """Find the application section across all pages/columns and return its
+    items as a clean list, preserving original wording.
+
+    Handles both TDS layouts:
+      * older: "Product Application" heading followed by bulleted lines
+      * newer: "Application Instructions" heading (back page) followed by
+        plain sentences / short paragraphs with no bullet glyphs
 
     Bullets in the source are hyphenated across line-wraps by the PDF
     renderer's fixed line width (not real hyphenation), so wrapped lines are
     rejoined into a single bullet string.
     """
     with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            for block in extract_columns_text(page):
-                if SECTION_TITLE not in block:
-                    continue
-                bullets = _bullets_from_block(block)
-                if bullets:
-                    return bullets
+        for title in SECTION_TITLES:
+            for page in pdf.pages:
+                for block in extract_columns_text(page, mark_paragraphs=True):
+                    if not any(l.strip().startswith(title) for l in block.split("\n")):
+                        continue
+                    items = _items_from_block(block, title)
+                    if items:
+                        return items
     return []
 
 
-def _bullets_from_block(block):
+def _looks_like_heading(line, prev_line=""):
+    """Short, title-case line with no terminal punctuation that follows a
+    finished sentence (or the section start) -- i.e. the next section title."""
+    s = line.strip()
+    if not s or s[0] in "•-":
+        return False
+    prev = prev_line.strip()
+    return (
+        s[0].isupper()
+        and len(s.split()) <= 4
+        and not s.endswith((".", ",", ":", ";"))
+        and (not prev or prev.endswith((".", "!", "?")))
+    )
+
+
+def _is_footer(line):
+    s = line.strip()
+    return bool(
+        "@" in s
+        or s.lower().startswith("www.")
+        or re.search(r"\d{3}[.\-]\d{3}[.\-]\d{4}", s)
+        or (s.isupper() and len(s) > 3)
+    )
+
+
+def _items_from_block(block, title):
+    """Dispatch on layout: bulleted (old) vs. prose (new)."""
+    lines = block.split("\n")
+    try:
+        start = next(i for i, l in enumerate(lines) if l.strip().startswith(title))
+    except StopIteration:
+        return []
+
+    # Collect the span of lines belonging to this section (up to the next
+    # heading / footer) and see whether it uses bullet markers. A blank
+    # string in the span marks a paragraph break.
+    span, prev = [], ""
+    for line in lines[start + 1:]:
+        if not line.strip():
+            if span and span[-1] != "":
+                span.append("")
+            continue
+        if _is_footer(line) or _looks_like_heading(line, prev):
+            break
+        span.append(line.strip())
+        prev = line
+    has_markers = any(l and (l[0] in "•" or l == "-" or l.startswith("- ")) for l in span)
+
+    if has_markers:
+        return _bullets_from_block(block, title)
+    return _paragraphs_from_lines(span)
+
+
+def _join_wrapped(lines):
+    text = ""
+    for line in lines:
+        if text.endswith("-") and line[:1].islower():
+            text += line          # wrap hyphen: 'well-' + 'ventilated'
+        else:
+            text = (text + " " + line) if text else line
+    return " ".join(text.split())
+
+
+def _paragraphs_from_lines(span):
+    """Prose section -> one item per PARAGRAPH (a paragraph can hold several
+    sentences and stays together as one bullet, matching how the TDS groups
+    its instructions). If the PDF gave no paragraph spacing at all, fall back
+    to one item per sentence."""
+    paragraphs, cur = [], []
+    for line in span + [""]:
+        if line == "":
+            if cur:
+                paragraphs.append(_join_wrapped(cur))
+                cur = []
+        else:
+            cur.append(line)
+    paragraphs = [p for p in paragraphs if len(p) > 2]
+    if len(paragraphs) <= 1 and "" not in span:
+        return _sentences_from_lines([l for l in span if l])
+    return paragraphs
+
+
+def _sentences_from_lines(span):
+    """Prose section -> list of sentences. Wrapped lines are re-joined (a
+    trailing '-' on a line is a wrap hyphen, joined without a space), then
+    the text is split on sentence boundaries so each instruction becomes its
+    own checkbox/line on the label."""
+    text = ""
+    for line in span:
+        if text.endswith("-") and line[:1].islower():
+            text += line
+        else:
+            text = (text + " " + line) if text else line
+    text = " ".join(text.split())
+    parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", text)
+    return [p.strip() for p in parts if len(p.strip()) > 2]
+
+
+def _bullets_from_block(block, title=SECTION_TITLE):
     """Given a text block containing the Product Application heading,
     isolate the bullet lines that follow it, stopping at the next heading
     (a line with no leading bullet that looks like a new section title).
@@ -132,7 +276,7 @@ def _bullets_from_block(block):
     """
     lines = block.split("\n")
     try:
-        start = next(i for i, l in enumerate(lines) if SECTION_TITLE in l)
+        start = next(i for i, l in enumerate(lines) if title in l)
     except StopIteration:
         return []
 

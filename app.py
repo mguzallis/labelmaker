@@ -17,6 +17,7 @@ import streamlit as st
 import pymupdf as fitz
 from PIL import Image
 
+import master_data
 from parse_sds import parse_sds
 from parse_tds import extract_product_application_bullets, extract_storage_info
 from label_renderer import render_label, render_compact_label, render_tape_label
@@ -209,12 +210,87 @@ if "rendered_label" not in st.session_state:
 if "dropped_content" not in st.session_state:
     st.session_state.dropped_content = None
 
+def _load_from_master():
+    """Button callback: pull TDS + SDS data for the chosen product from the
+    master and prefill the form. Runs before the widgets are drawn, so it can
+    set their values."""
+    ss = st.session_state
+    code = (ss.get("master_code_label") or "").split(" -- ")[0]
+    prod = ss.get("_master_products", {}).get(code)
+    if not prod:
+        return
+    # Reset checkbox state from any earlier product
+    for k in [k for k in ss.keys() if k.startswith("bullet_") or k.startswith("ingredient_")]:
+        del ss[k]
+    tds = master_data.tds_for(code)
+    ss.tds_bullets = tds["bullets"]
+    cat = prod.get("category")
+    if cat in CATEGORIES:
+        ss["category"] = cat
+    ss.tds_storage_info = tds["storage"] if cat == "Tape" else None
+    if prod.get("vertical") in VERTICAL_BACKGROUNDS:
+        ss["vertical_name"] = prod["vertical"]
+    ss["product_code"] = code
+    ss["product_name"] = prod.get("title") or ""
+    # Best-effort match of the master's packaging to a label size
+    if cat and cat != "Tape":
+        opts = [p for p in PRODUCT_SIZES if cat in available_categories_for_product(p) and PRODUCT_SIZES[p]["item_label"]]
+        _dual = next((pk for pk in prod.get("packaging", [])
+                      if re.search(r"\d\s*m[lL]\b", pk) and "cartridge" in pk.lower()), None)
+        if _dual and master_data.part_choices(master_data.sds_choices(code)):
+            ss["product_type"] = "Dual Cartridge"
+            ss["cartridge_size_text"] = re.sub(r"(\d)\s*m[lL]\b", r"\1 mL", _dual)
+            if "dual" in _dual.lower():
+                ss["cartridge_size_text"] = re.sub(r"\s*dual\s*", " ", ss["cartridge_size_text"], flags=re.I).strip()
+        for pk in ([] if ss.get("product_type") == "Dual Cartridge" else prod.get("packaging", [])):
+            hit = next((o for o in opts if o.lower() == pk.lower()
+                        or o.lower().replace(" ", "") == pk.lower().replace(" ", "")), None)
+            if hit:
+                ss["product_type"] = hit
+                break
+    # SDS
+    ss.sds_data = None
+    ss.master_notice = []
+    choice = ss.get("_master_sds_map", {}).get(ss.get("master_sds_label"))
+    _pc = master_data.part_choices(master_data.sds_choices(code)) if (cat != "Tape") else {}
+    combine = bool(_pc) and ss.get("product_type") == "Dual Cartridge"
+    needs = REQUIRES_SDS.get(cat or ss.get("category", "Adhesive"), True)
+    if needs and combine:
+        a = master_data.sds_data_for(_pc["A"]["file_name"])
+        b = master_data.sds_data_for(_pc["B"]["file_name"])
+        data = master_data.combine_sds(a, b) if a and b else None
+        ss.sds_data = data
+        if data:
+            ss.master_notice.append(f"Part A and Part B SDSs combined; {data['_combined_removed']} duplicate statements removed. "
+                                    "Review the statements and ingredients below.")
+            if data.get("_master_flags"):
+                ss.master_notice.append(f"The master flags: {data['_master_flags']}. Anything missing will be blank on the label.")
+    elif needs and choice:
+        data = master_data.sds_data_for(choice)
+        ss.sds_data = data
+        if data and data.get("_master_flags"):
+            ss.master_notice.append(f"The master flags this SDS: {data['_master_flags']}. Anything missing will be blank on the label.")
+    elif needs:
+        up = ss.get("sds_upload_fallback")
+        if up is not None:
+            path = _save_upload_to_tmp(up)
+            ss.sds_data = parse_sds(path)
+            os.unlink(path)
+            ss.master_notice.append("This product has no SDS in the master, so the uploaded SDS PDF was parsed instead.")
+        else:
+            ss.master_notice.append("This product has no SDS in the master. Upload one below and load again, or switch to Upload PDFs.")
+    if not tds["bullets"]:
+        ss.master_notice.append("The master has no Application Instructions for this product, so there are no Directions for Use bullets.")
+    ss.master_loaded = code
+    ss.rendered_label = None
+
+
 left, right = st.columns([1, 1.3])
 
 with left:
     st.subheader("1. Product Basics")
     CATEGORY_DISPLAY_LABELS = {"Adhesive": "Bond", "Sealant": "Seal", "Tape": "Tape"}
-    category = st.selectbox("Category", CATEGORIES, format_func=lambda c: CATEGORY_DISPLAY_LABELS.get(c, c))
+    category = st.selectbox("Category", CATEGORIES, format_func=lambda c: CATEGORY_DISPLAY_LABELS.get(c, c), key="category")
 
     is_tape = category == "Tape"
 
@@ -224,7 +300,7 @@ with left:
     ] if not is_tape else []
     product_type = st.selectbox(
         "Product Type / Packaging", available_products if available_products else ["N/A -- Tape is one size"],
-        disabled=is_tape,
+        disabled=is_tape, key="product_type",
         help="Tape only ever uses one label size regardless of the tape's own physical dimensions, so this is disabled." if is_tape else None,
     )
 
@@ -252,7 +328,14 @@ with left:
 
     st.caption(f"Label size: {canvas_size_in[0]}\" x {canvas_size_in[1]}\"")
 
-    vertical_name = st.selectbox("Vertical Market", list(VERTICAL_BACKGROUNDS.keys()))
+    # Dual (two-part) cartridges share one 6x4 label for product and box; the
+    # size printed on it varies per product, so it is typed (or loaded from the master).
+    size_label_text = product_type
+    if not is_tape and product_type == "Dual Cartridge":
+        size_label_text = st.text_input("Size shown on the label", placeholder="e.g. 400 mL Cartridge",
+                                        key="cartridge_size_text") or product_type
+
+    vertical_name = st.selectbox("Vertical Market", list(VERTICAL_BACKGROUNDS.keys()), key="vertical_name")
     badge_icon_path = BADGE_ICONS.get(vertical_name, DEFAULT_BADGE_ICON)
 
     if not is_tape and not has_template(category, vertical_name, product_type):
@@ -263,16 +346,104 @@ with left:
             f"(different positioning, no baked-in art) from the real templates."
         )
 
+    case_quantity = None
+    if is_tape:
+        # Every tape product ships as what the other categories call a
+        # "Box Label" -- confirmed across all 5 real references, all of
+        # which show Case Quantity in the footer unconditionally. No
+        # toggle needed; always collected. Case quantity genuinely
+        # varies per tape product (no fixed chart value yet), so this
+        # stays manual entry until that data exists.
+        qty_value = st.text_input("Case Quantity (value)", placeholder="e.g. 12")
+        if qty_value:
+            case_quantity = qty_value
+    else:
+        # Box Label branch -- relevant for any product type with a real
+        # box_quantity defined in product_sizes.py, not just Cartridge/
+        # Sausage by name -- that substring check silently missed Gallon
+        # Can and Aerosol Can, which also ship as box labels. Correct
+        # verbiage confirmed: "Case Quantity:" for Cartridges, "QTY:" for
+        # everything else -- these are genuinely different labels, not
+        # just a generic "quantity" field, so the prefix is picked per
+        # product type and baked into the value passed to the renderer.
+        is_cartridge = "Cartridge" in product_type
+        has_box_variant = PRODUCT_SIZES[product_type].get("box_quantity") is not None
+        if has_box_variant:
+            box_label = st.radio("Box Label?", ["No", "Yes"], horizontal=True)
+            if box_label == "Yes":
+                qty_prefix = "Case Quantity:" if is_cartridge else "QTY:"
+                # Every other category's case quantity is the fixed,
+                # known value from the original size chart -- already
+                # stored as box_quantity in product_sizes.py, so there's
+                # nothing for the user to type; just confirm what it is.
+                fixed_qty = PRODUCT_SIZES[product_type]["box_quantity"]
+                if fixed_qty == "manual":
+                    typed_qty = st.text_input("Case Quantity (value)", placeholder="e.g. 6", key="case_qty_manual")
+                    if typed_qty:
+                        case_quantity = f"{qty_prefix} {typed_qty}"
+                    else:
+                        st.warning("Enter the case quantity for this box label.")
+                else:
+                    case_quantity = f"{qty_prefix} {fixed_qty}"
+                    st.caption(f"{qty_prefix} {fixed_qty} (fixed per size chart)")
+
     st.subheader("2. Source Documents")
     needs_sds = REQUIRES_SDS.get(category, True)
+    source_mode = st.radio(
+        "Where should the label content come from?",
+        ["Master data (recommended)", "Upload PDFs"],
+        horizontal=True, key="source_mode",
+        help="Master data uses the approved Product Source of Truth. Upload PDFs parses an SDS and TDS "
+             "you provide, for products that are not in the master yet.",
+    )
+    use_master = source_mode.startswith("Master")
     sds_file = None
-    if needs_sds:
-        sds_file = st.file_uploader("SDS (PDF)", type="pdf", key="sds_upload")
+    tds_file = None
+    if use_master:
+        try:
+            _plist = master_data.product_list()
+        except Exception as _e:
+            _plist = None
+            st.error(f"Could not read the master data ({type(_e).__name__}). Check the GITHUB_TOKEN secret, "
+                     "or switch to Upload PDFs.")
+        if _plist:
+            st.session_state["_master_products"] = {p["code"]: p for p in _plist}
+            st.selectbox("Product Code", [f"{p['code']} -- {p['title']}" for p in _plist], key="master_code_label")
+            _code = (st.session_state.get("master_code_label") or "").split(" -- ")[0]
+            _choices = master_data.sds_choices(_code) if (_code and needs_sds) else []
+            st.session_state["_master_sds_map"] = {c["label"]: c["file_name"] for c in _choices}
+            _parts = master_data.part_choices(_choices) if needs_sds else {}
+            if _parts and product_type == "Dual Cartridge":
+                st.session_state["_master_sds_map"][master_data.COMBINED_LABEL] = "combined"
+                st.session_state["master_sds_label"] = master_data.COMBINED_LABEL
+                st.caption("Dual cartridge: the Part A and Part B SDSs will be combined into one label.")
+            elif needs_sds and len(_choices) > 1:
+                st.selectbox("This product has more than one SDS. Which one is for this label?",
+                             [c["label"] for c in _choices], key="master_sds_label")
+            elif needs_sds and len(_choices) == 1:
+                st.session_state["master_sds_label"] = _choices[0]["label"]
+                st.caption(f"SDS: {_choices[0]['label']}")
+            else:
+                st.session_state["master_sds_label"] = None
+                if needs_sds:
+                    st.warning("No SDS for this product in the master. Upload one to use for this label.")
+                    st.file_uploader("SDS (PDF)", type="pdf", key="sds_upload_fallback")
+                else:
+                    st.caption("Tape products don't require an SDS -- hazard/pictogram content will be skipped.")
+            st.button("Load from master", type="secondary", use_container_width=True, on_click=_load_from_master,
+                      help="Fills Product Basics and Label Text from the master. You can still edit every field.")
+            if st.session_state.get("master_loaded") == _code:
+                st.success(f"Loaded {st.session_state.master_loaded} from the master. Review the content below before generating.")
+            for _n in st.session_state.get("master_notice", []):
+                st.warning(_n)
     else:
-        st.caption("Tape products don't require an SDS -- hazard/pictogram content will be skipped.")
-    tds_file = st.file_uploader("TDS (PDF)", type="pdf", key="tds_upload")
+        if needs_sds:
+            sds_file = st.file_uploader("SDS (PDF)", type="pdf", key="sds_upload")
+        else:
+            st.caption("Tape products don't require an SDS -- hazard/pictogram content will be skipped.")
+        tds_file = st.file_uploader("TDS (PDF)", type="pdf", key="tds_upload")
 
-    if st.button("Parse Documents", type="secondary", use_container_width=True):
+    if (not use_master) and st.button("Parse Documents", type="secondary", use_container_width=True):
         if needs_sds and sds_file is None:
             st.error("This category requires an SDS.")
         elif tds_file is None:
@@ -322,7 +493,7 @@ with left:
         force_exclude_response = False
 
     if st.session_state.tds_bullets:
-        st.markdown("**Application Instructions** (uncheck any to exclude)")
+        st.markdown("**Directions for Use** (from the TDS Application Instructions -- uncheck any to exclude)")
         selected_bullets = []
         for i, bullet in enumerate(st.session_state.tds_bullets):
             if st.checkbox(bullet, value=True, key=f"bullet_{i}"):
@@ -349,42 +520,6 @@ with left:
     else:
         selected_ingredients = []
 
-    case_quantity = None
-    if is_tape:
-        # Every tape product ships as what the other categories call a
-        # "Box Label" -- confirmed across all 5 real references, all of
-        # which show Case Quantity in the footer unconditionally. No
-        # toggle needed; always collected. Case quantity genuinely
-        # varies per tape product (no fixed chart value yet), so this
-        # stays manual entry until that data exists.
-        st.subheader("2b. Case Quantity")
-        qty_value = st.text_input("Case Quantity (value)", placeholder="e.g. 12")
-        if qty_value:
-            case_quantity = qty_value
-    else:
-        # Box Label branch -- relevant for any product type with a real
-        # box_quantity defined in product_sizes.py, not just Cartridge/
-        # Sausage by name -- that substring check silently missed Gallon
-        # Can and Aerosol Can, which also ship as box labels. Correct
-        # verbiage confirmed: "Case Quantity:" for Cartridges, "QTY:" for
-        # everything else -- these are genuinely different labels, not
-        # just a generic "quantity" field, so the prefix is picked per
-        # product type and baked into the value passed to the renderer.
-        is_cartridge = "Cartridge" in product_type
-        has_box_variant = PRODUCT_SIZES[product_type].get("box_quantity") is not None
-        if has_box_variant:
-            st.subheader("2b. Box Label")
-            box_label = st.radio("Box Label?", ["No", "Yes"], horizontal=True)
-            if box_label == "Yes":
-                qty_prefix = "Case Quantity:" if is_cartridge else "QTY:"
-                # Every other category's case quantity is the fixed,
-                # known value from the original size chart -- already
-                # stored as box_quantity in product_sizes.py, so there's
-                # nothing for the user to type; just confirm what it is.
-                fixed_qty = PRODUCT_SIZES[product_type]["box_quantity"]
-                case_quantity = f"{qty_prefix} {fixed_qty}"
-                st.caption(f"{qty_prefix} {fixed_qty} (fixed per size chart)")
-
     st.subheader("3. Label Text")
     ap_col, rev_col = st.columns([2, 1])
     with ap_col:
@@ -397,13 +532,13 @@ with left:
         internal_label_number = ap_number
     else:
         internal_label_number = None
-    product_code = st.text_input("Product Code", placeholder="e.g. R-OS86")
+    product_code = st.text_input("Product Code", placeholder="e.g. R-OS86", key="product_code")
     if is_tape:
         badge_color = None
     else:
         has_color = st.radio("Does this product have a color?", ["No", "Yes"], horizontal=True)
         badge_color = st.text_input("Color", placeholder="e.g. WHITE").upper() if has_color == "Yes" else None
-    product_name = st.text_input("Product Name/Type (below the badge box)", placeholder="e.g. Acetoxy Silicone")
+    product_name = st.text_input("Product Name/Type (below the badge box)", placeholder="e.g. Acetoxy Silicone", key="product_name")
     if use_compact_layout:
         sales_description = st.text_input("Sales Description (orange bar)")
     else:
@@ -494,7 +629,7 @@ with right:
                         product_name=product_name,
                         sales_description=sales_description,
                         product_code=product_code,
-                        size_label=product_type,
+                        size_label=size_label_text,
                         badge_color=badge_color or None,
                         badge_icon_path=badge_icon_path,
                         internal_label_number=internal_label_number or None,
@@ -518,7 +653,7 @@ with right:
                         sales_description_1=sales_description_1,
                         sales_description_2=sales_description_2,
                         product_code=product_code,
-                        size_label=product_type,
+                        size_label=size_label_text,
                         badge_color=badge_color or None,
                         badge_icon_path=badge_icon_path,
                         internal_label_number=internal_label_number or None,
@@ -551,7 +686,7 @@ with right:
 
         pdf_filename = build_label_filename(
             ap_number, revision_number, product_code,
-            product_type if not is_tape else "",
+            size_label_text if not is_tape else "",
             canvas_size_in, is_tape=is_tape,
             tape_size_label=tape_size_label if is_tape else "",
         )

@@ -22,6 +22,27 @@ import textwrap
 from layout_config import ZONES, zone_px, badge_zone_px, icon_zone_px, FONTS, COLOR_ORANGE, COLOR_NAVY, COLOR_GREY_BOX, COLOR_WHITE, COLOR_DARK_TEXT, VERTICAL_BADGE_TEXT_COLOR, DEFAULT_BADGE_TEXT_COLOR
 
 
+# Soft drop shadow behind the vertical name and product name text, in the
+# same style as the shadow under the grey boxes. OFF by default until
+# approved; now the standing rule for vertical name + product name.
+TEXT_SHADOW_ENABLED = True
+
+
+def _apply_text_shadow(canvas, items, W, H, opacity=150):
+    """Return canvas with a blurred drop shadow composited behind each
+    (xy, text, font) in `items`. Caller re-creates its ImageDraw after."""
+    if not TEXT_SHADOW_ENABLED or not items:
+        return canvas
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    off = (max(int(0.0035 * W), 2), max(int(0.005 * H), 2))
+    for (x, y), text, font in items:
+        ld.text((x + off[0], y + off[1]), text, font=font, fill=(0, 0, 0, opacity))
+    layer = layer.filter(ImageFilter.GaussianBlur(max(int(0.0045 * H), 2)))
+    return Image.alpha_composite(canvas.convert("RGBA"), layer).convert("RGB")
+
+
+
 def _font(weight, size):
     return ImageFont.truetype(FONTS[weight], size)
 
@@ -731,7 +752,10 @@ def render_compact_label(
         draw.rectangle([div_x0, div_y0, div_x1, div_y1], fill=accent_color)
 
         vx0, vy0, vx1, vy1 = compact_zone_px("vertical_name", W, H, dimension_group=dimension_group)
-        draw.text((vx0, vy0), vertical_name, font=_font("kallisto", int(0.052 * H)), fill=COLOR_WHITE)
+        _vn_font = _font("kallisto", int(0.052 * H))
+        canvas = _apply_text_shadow(canvas, [((vx0, vy0), vertical_name, _vn_font)], W, H)
+        draw = ImageDraw.Draw(canvas)
+        draw.text((vx0, vy0), vertical_name, font=_vn_font, fill=COLOR_WHITE)
 
     # badge_box bounds are needed below regardless (product code text
     # still positions against the real badge box, baked or freshly drawn).
@@ -788,7 +812,10 @@ def render_compact_label(
         pn_font = _font("kallisto", pn_font_size)
     pn_bbox = pn_font.getbbox(product_name)
     pn_w = pn_font.getlength(product_name)
-    draw.text((pn_x0 + ((pn_x1 - pn_x0) - pn_w) / 2, pn_y0 - pn_bbox[1]), product_name, font=pn_font, fill=COLOR_WHITE)
+    _pn_xy = (pn_x0 + ((pn_x1 - pn_x0) - pn_w) / 2, pn_y0 - pn_bbox[1])
+    canvas = _apply_text_shadow(canvas, [(_pn_xy, product_name, pn_font)], W, H)
+    draw = ImageDraw.Draw(canvas)
+    draw.text(_pn_xy, product_name, font=pn_font, fill=COLOR_WHITE)
 
     ob_x0, ob_y0, ob_x1, ob_y1 = compact_zone_px("orange_bar", W, H, dimension_group=dimension_group)
     if not using_baked_background:
@@ -1081,6 +1108,8 @@ def render_label(
         vert_name_gap = int((by1 - by0) * 0.12)
         vn_bbox = vert_name_font.getbbox(vertical_name)
         vy0 = by0 - vert_name_gap - (vn_bbox[3] - vn_bbox[1]) - vn_bbox[1]
+        canvas = _apply_text_shadow(canvas, [((vx0, vy0), vertical_name, vert_name_font)], W, H)
+        draw = ImageDraw.Draw(canvas)
         draw.text((vx0, vy0), vertical_name, font=vert_name_font, fill=COLOR_WHITE)
 
     # badge_box bounds are needed below regardless of which branch ran
@@ -1249,6 +1278,16 @@ def render_label(
     # was never actually applied as a constraint until now.
     max_code_font_size = int(box_h * code_h_ratio / 0.78)  # /0.78 since this font renders glyphs at ~78% of nominal size
     code_font_size = min(code_font_size, max_code_font_size)
+    # Industrial + color variant (e.g. OA4 / WHITE): the real reference has
+    # the code noticeably taller (glyph ~54% of the badge box height vs the
+    # 42% used elsewhere) with the color word dropped to near the bottom
+    # edge. Measured from the reference: code top margin ~10% of box, color
+    # bottom margin ~5%. Other verticals keep the original proportions.
+    _industrial_color_layout = bool(badge_color)   # applies to every vertical with a color line (approved)
+    _legacy_code_font_size = code_font_size   # size the WHITE line is scaled from
+    if _industrial_color_layout:
+        _big_cap = int(box_h * 0.54 / 0.716)   # 0.716 = measured ink/nominal ratio for this font on OA4-type codes
+        code_font_size = max(code_font_size, _big_cap)   # the overflow shrink loop below still guards long codes
     code_font = _font("kallisto", code_font_size)
     # Safety shrink -- the calibration above assumes nothing is longer
     # than "T-OS166" (the longest code Forza expects), so an actual code
@@ -1282,7 +1321,7 @@ def render_label(
         # the calibrated code width's proportion, then applied fixed.
         color_probe_font = _font("kallisto", probe_size)
         color_probe_w = color_probe_font.getlength("WHITE")
-        color_target_w = (code_font.getlength(calibration_text)) * color_to_code_w_ratio
+        color_target_w = (_font("kallisto", _legacy_code_font_size).getlength(calibration_text)) * color_to_code_w_ratio
         color_font_size = max(int(probe_size * color_target_w / color_probe_w), 8)
         color_font = _font("kallisto", color_font_size)
 
@@ -1304,6 +1343,9 @@ def render_label(
         top_margin = (box_h - total_content_h) / 2
         code_y = by0 + top_margin
         color_y = code_y + code_glyph_h + line_gap
+        if _industrial_color_layout:
+            code_y = by0 + box_h * 0.10
+            color_y = by1 - box_h * 0.05 - color_glyph_h
 
         # Center the code's ACTUAL rendered width within the available
         # space (text_x0 to icon_x), rather than always left-anchoring at
@@ -1471,6 +1513,8 @@ def render_label(
                 break
             pn_font_size_2line -= 1
             pn_font_2line = _font("kallisto", pn_font_size_2line)
+        canvas = _apply_text_shadow(canvas, [((px0, line1_y), line1, pn_font_2line), ((px0, line2_y), line2, pn_font_2line)], W, H)
+        draw = ImageDraw.Draw(canvas)
         draw.text((px0, line1_y), line1, font=pn_font_2line, fill=COLOR_WHITE)
         draw.text((px0, line2_y), line2, font=pn_font_2line, fill=COLOR_WHITE)
     else:
@@ -1490,6 +1534,8 @@ def render_label(
                 break
             pn_font_size -= 1
             pn_font = _font("kallisto", pn_font_size)
+        canvas = _apply_text_shadow(canvas, [((px0, py0 - pn_bbox[1]), product_name, pn_font)], W, H)
+        draw = ImageDraw.Draw(canvas)
         draw.text((px0, py0 - pn_bbox[1]), product_name, font=pn_font, fill=COLOR_WHITE)
 
     # --- Orange bars + sales descriptions ---
@@ -2085,7 +2131,10 @@ def render_tape_label(
     bx0, by0, bx1, by1 = [px(v) for v in badge_zone]
     if not using_baked_background:
         vx0, vy0 = px(380.6), px(7.3)
-        draw.text((vx0, vy0), vertical_name, font=_font("kallisto", int(0.045 * H)), fill=COLOR_WHITE)
+        _vn_font = _font("kallisto", int(0.045 * H))
+        canvas = _apply_text_shadow(canvas, [((vx0, vy0), vertical_name, _vn_font)], W, H)
+        draw = ImageDraw.Draw(canvas)
+        draw.text((vx0, vy0), vertical_name, font=_vn_font, fill=COLOR_WHITE)
         draw.rounded_rectangle([bx0, by0, bx1, by1], radius=int(0.01 * W), fill=COLOR_WHITE)
 
         # --- Vertical icon (circular, overlapping the badge box's right
@@ -2155,10 +2204,14 @@ def render_tape_label(
         b1, b2 = pn_font_2.getbbox(l1), pn_font_2.getbbox(l2)
         y1_ = pn_y0 - b1[1]
         y2_ = y1_ + (b1[3] - b1[1]) + gap - b2[1]
+        canvas = _apply_text_shadow(canvas, [((pn_x0, y1_), l1, pn_font_2), ((pn_x0, y2_), l2, pn_font_2)], W, H)
+        draw = ImageDraw.Draw(canvas)
         draw.text((pn_x0, y1_), l1, font=pn_font_2, fill=COLOR_WHITE)
         draw.text((pn_x0, y2_), l2, font=pn_font_2, fill=COLOR_WHITE)
     else:
         pn_bbox = pn_font.getbbox(product_name)
+        canvas = _apply_text_shadow(canvas, [((pn_x0, pn_y0 - pn_bbox[1]), product_name, pn_font)], W, H)
+        draw = ImageDraw.Draw(canvas)
         draw.text((pn_x0, pn_y0 - pn_bbox[1]), product_name, font=pn_font, fill=COLOR_WHITE)
 
     # --- Bar text ---

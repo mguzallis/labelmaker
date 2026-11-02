@@ -32,6 +32,16 @@ PRODUCT_SIZES = {
         "box_quantity": 12,
         "pallet_quantity": 432,
     },
+    # Small two-part (Part A + Part B) cartridges: one 6x4 label serves as both
+    # the product label and the box label. Case quantity varies by product, so
+    # it is typed in ("manual"). The size text printed on the label is entered
+    # separately in the app (e.g. "400 mL Cartridge").
+    "Dual Cartridge": {
+        "item_label": _dim("6x4"),
+        "box_label": _dim("6x4"),
+        "box_quantity": "manual",
+        "pallet_quantity": None,
+    },
     "10oz Sausage": {
         "item_label": _dim("8x6"),
         "box_label": _dim("8x6"),
