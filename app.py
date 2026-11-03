@@ -339,6 +339,7 @@ with left:
     # size printed on it varies per product, so it is typed (or loaded from the master).
     size_label_text = product_type
     dual_filename_size = None
+    dual_size_value = None
     if not is_tape and product_type == "Dual Cartridge":
         _choice = st.selectbox("Cartridge size", DUAL_SIZES + [DUAL_SIZE_OTHER], key="dual_size_choice")
         if _choice == DUAL_SIZE_OTHER:
@@ -346,6 +347,7 @@ with left:
         _size = _choice or "400ml"
         size_label_text = f"SIZE: {_size}"   # footer reads "SIZE: 400ml"
         dual_filename_size = f"AB_{_size}"
+        dual_size_value = _size
 
     vertical_name = st.selectbox("Vertical Market", list(VERTICAL_BACKGROUNDS.keys()), key="vertical_name")
     badge_icon_path = BADGE_ICONS.get(vertical_name, DEFAULT_BADGE_ICON)
@@ -720,5 +722,46 @@ with right:
             mime="application/pdf",
             use_container_width=True,
         )
+
+        # ---- Save this label's details to the master Labels tab (as a DRAFT) ----
+        # Only Mike approves drafts, so this never changes approved data. It is a
+        # button (not automatic) so test/dummy labels are not saved by accident.
+        # Single-bar layouts (aerosol, canisters) store their one bar in "Left Bar Text".
+        st.markdown("---")
+        if st.button("Save label details to master (draft)", use_container_width=True,
+                     help="Saves AP #, revision, size, color and the orange-bar text to the Labels tab as a pending draft for approval."):
+            try:
+                import master_repo
+                if use_compact_layout:
+                    _bar_l, _bar_r = (sales_description or "").strip(), ""
+                else:
+                    _bar_l, _bar_r = (sales_description_1 or "").strip(), (sales_description_2 or "").strip()
+                _size_container = (f"{dual_size_value} Dual Cartridge" if dual_size_value else product_type)
+                _ptype, _sds_no = "", ""
+                try:
+                    _t = next((r for r in master_data._rows("tds") if (r.get("Product Code") or "").strip() == product_code), {})
+                    _ptype = (_t.get("Product Type") or "").strip()
+                    _files = [f.strip() for f in (st.session_state.get("sds_data") or {}).get("_master_file", "").split("+") if f.strip()]
+                    _by_file = {(r.get("File Name") or "").strip(): (r.get("SDS #") or "").strip() for r in master_data._rows("sds")}
+                    _sds_no = " + ".join(x for x in (_by_file.get(f, "") for f in _files) if x)
+                except Exception:
+                    pass
+                _row = {
+                    "Product Code": product_code,
+                    "Product Type (from TDS)": _ptype,
+                    "AP #": ap_number or "",
+                    "Revision": (f"N{revision_number}" if revision_number else ""),
+                    "Size / Container": _size_container,
+                    "Color": badge_color or "",
+                    "Label Product Name": product_name or "",
+                    "Left Bar Text": _bar_l,
+                    "Right Bar Text": _bar_r,
+                    "SDS # (link to SDS tab)": _sds_no,
+                }
+                _res = master_repo.save_draft("labels", _row, who="Label Builder")
+                master_data.refresh()
+                st.success(f"Saved to the Labels tab as a draft ({_res}). It will show once approved.")
+            except Exception as e:
+                st.error(f"Could not save to the master: {e}")
     else:
         st.info("Fill in the form and click **Generate Label** to see a preview here.")

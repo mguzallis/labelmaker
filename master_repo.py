@@ -33,6 +33,8 @@ KEYS = {
     "sds_ghs_status": ["File Name"],
     "labels": ["Product Code", "Size / Container", "Color"],
 }
+# Key columns that may legitimately be blank (a product with no color).
+OPTIONAL_KEYS = {"labels": ("Color",)}
 # Which app owns which tab (apps must not write another app's tab).
 OWNER = {"tds": "TDS Builder", "sds": "SDS Formatter", "labels": "Label Builder",
          "product_sds_map": "Product Marketing", "sds_ghs_status": "Report"}
@@ -107,7 +109,7 @@ def save_draft(tab, row, backend=None, who="app"):
     if tab not in KEYS:
         raise ValueError(f"unknown tab {tab!r}")
     keys = KEYS[tab]
-    missing = [k for k in keys if not (row.get(k) or "").strip()]
+    missing = [k for k in keys if k not in OPTIONAL_KEYS.get(tab, ()) and not (row.get(k) or "").strip()]
     if missing:
         raise ValueError(f"row is missing key column(s): {missing}")
     b = backend or GitHubBackend()
