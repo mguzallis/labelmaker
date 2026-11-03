@@ -45,6 +45,12 @@ def _rows(tab):
     return _load_uncached(tab) if _loader is not None else _load_cached(tab)
 
 
+def label_rows(code):
+    """Existing labels for this product code in the master Labels tab (rows with a size)."""
+    return [r for r in _rows("labels")
+            if (r.get("Product Code") or "").strip() == code and (r.get("Size / Container") or "").strip()]
+
+
 def refresh():
     try:
         _load_cached.clear()

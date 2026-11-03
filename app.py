@@ -213,6 +213,56 @@ if "rendered_label" not in st.session_state:
 if "dropped_content" not in st.session_state:
     st.session_state.dropped_content = None
 
+def _label_size_matches(row_size, ptype, cat):
+    row_size = (row_size or "").strip().lower()
+    if cat == "Tape":
+        return True
+    if ptype == "Dual Cartridge":
+        return row_size.endswith("dual cartridge")
+    return row_size == (ptype or "").strip().lower()
+
+
+def _label_option(r):
+    bits = [(r.get("AP #") or "").strip(), (r.get("Revision") or "").strip()]
+    head = " ".join(b for b in bits if b) or "no AP #"
+    tail = " / ".join(x for x in [(r.get("Size / Container") or "").strip(), (r.get("Color") or "").strip()] if x)
+    return f"{head} -- {tail}"
+
+
+def _apply_label_row(row):
+    """Prefill the label fields that do not come from the TDS/SDS (AP #, revision,
+    color, orange-bar text, tape/dual-cartridge size) from an existing master label."""
+    ss = st.session_state
+    ss["ap_number"] = (row.get("AP #") or "").strip()
+    ss["revision_number"] = re.sub(r"^[Nn]", "", (row.get("Revision") or "").strip())
+    color = (row.get("Color") or "").strip()
+    ss["has_color"] = "Yes" if color else "No"
+    ss["label_color"] = color
+    left, right = (row.get("Left Bar Text") or "").strip(), (row.get("Right Bar Text") or "").strip()
+    ss["sales_description"] = left
+    ss["sales_description_1"] = left
+    ss["sales_description_2"] = right
+    size = (row.get("Size / Container") or "").strip()
+    if ss.get("product_type") == "Dual Cartridge":
+        m = re.match(r"^(\d+(?:\.\d+)?\s*ml)\b", size, re.I)
+        if m:
+            sz = m.group(1).replace(" ", "").lower()
+            if sz in DUAL_SIZES:
+                ss["dual_size_choice"] = sz
+            else:
+                ss["dual_size_choice"] = DUAL_SIZE_OTHER
+                ss["dual_size_other"] = sz
+    if ss.get("category") == "Tape":
+        ss["tape_size_text"] = size
+
+
+def _apply_existing_choice():
+    ss = st.session_state
+    row = ss.get("_existing_label_map", {}).get(ss.get("existing_label_choice"))
+    if row:
+        _apply_label_row(row)
+
+
 def _load_from_master():
     """Button callback: pull TDS + SDS data for the chosen product from the
     master and prefill the form. Runs before the widgets are drawn, so it can
@@ -291,6 +341,15 @@ def _load_from_master():
         ss.master_notice.append("The master has no Application Instructions for this product, so there are no Directions for Use bullets.")
     ss.master_loaded = code
     ss.rendered_label = None
+    # Prefill AP #, revision, color and bar text from an existing label for this product
+    try:
+        _rows_ = [r for r in master_data.label_rows(code)
+                  if _label_size_matches(r.get("Size / Container"), ss.get("product_type"), ss.get("category"))]
+        if _rows_:
+            _apply_label_row(_rows_[0])
+            ss["existing_label_choice"] = _label_option(_rows_[0])
+    except Exception:
+        pass
 
 
 left, right = st.columns([1, 1.3])
@@ -323,7 +382,7 @@ with left:
         canvas_size_in = (8, 4)
         dimension_group = None
         use_compact_layout = False
-        tape_size_label = st.text_input("Tape Size", placeholder="e.g. 3/4in x 108ft")
+        tape_size_label = st.text_input("Tape Size", placeholder="e.g. 3/4in x 108ft", key="tape_size_text")
     else:
         canvas_size_in = get_label_dimensions(product_type)
         # Aerosol/22L/108L Canister use a structurally different
@@ -537,11 +596,24 @@ with left:
         selected_ingredients = []
 
     st.subheader("3. Label Text")
+    if use_master:
+        try:
+            _ex = [r for r in master_data.label_rows(st.session_state.get("product_code") or "")
+                   if _label_size_matches(r.get("Size / Container"), product_type, category)]
+        except Exception:
+            _ex = []
+        if _ex:
+            st.session_state["_existing_label_map"] = {_label_option(r): r for r in _ex}
+            st.selectbox("Start from an existing label", ["(none -- fill in manually)"] + list(st.session_state["_existing_label_map"]),
+                         key="existing_label_choice", on_change=_apply_existing_choice,
+                         help="Fills the AP #, revision, color and orange-bar text from a label already in the master, "
+                              "so you can edit it or bump the revision.")
+            st.caption("Prefilled from the master. Change the revision (N#) for a new revision of this label.")
     ap_col, rev_col = st.columns([2, 1])
     with ap_col:
-        ap_number = st.text_input("Internal Label Number (AP + digits, not always 4)", placeholder="e.g. AP2451")
+        ap_number = st.text_input("Internal Label Number (AP + digits, not always 4)", placeholder="e.g. AP2451", key="ap_number")
     with rev_col:
-        revision_number = st.text_input("Revision (N#)", placeholder="e.g. 1")
+        revision_number = st.text_input("Revision (N#)", placeholder="e.g. 1", key="revision_number")
     if ap_number and revision_number:
         internal_label_number = f"{ap_number} N{revision_number}"
     elif ap_number:
@@ -552,17 +624,17 @@ with left:
     if is_tape:
         badge_color = None
     else:
-        has_color = st.radio("Does this product have a color?", ["No", "Yes"], horizontal=True)
-        badge_color = st.text_input("Color", placeholder="e.g. WHITE").upper() if has_color == "Yes" else None
+        has_color = st.radio("Does this product have a color?", ["No", "Yes"], horizontal=True, key="has_color")
+        badge_color = st.text_input("Color", placeholder="e.g. WHITE", key="label_color").upper() if has_color == "Yes" else None
     _lock_name = bool(use_master and st.session_state.get("_name_from_master") and st.session_state.get("product_name"))
     product_name = st.text_input("Product Name/Type (below the badge box)", placeholder="e.g. Acetoxy Silicone", key="product_name",
                                  disabled=_lock_name,
                                  help="Locked to the master product name so every document matches. Change it in the master (TDS) to change it here." if _lock_name else None)
     if use_compact_layout:
-        sales_description = st.text_input("Sales Description (orange bar)")
+        sales_description = st.text_input("Sales Description (orange bar)", key="sales_description")
     else:
-        sales_description_1 = st.text_input("Sales Description #1 (left orange bar)")
-        sales_description_2 = st.text_input("Sales Description #2 (right orange bar)")
+        sales_description_1 = st.text_input("Sales Description #1 (left orange bar)", key="sales_description_1")
+        sales_description_2 = st.text_input("Sales Description #2 (right orange bar)", key="sales_description_2")
     lot_number = "LOT#"  # not user-fillable -- always displays as the literal placeholder
 
     generate = st.button("Generate Label", type="primary", use_container_width=True)
