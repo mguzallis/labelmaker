@@ -855,10 +855,12 @@ with right:
                     "Revision": (f"N{revision_number}" if revision_number else ""),
                     "Size / Container": _size_container,
                     "Color": badge_color or "",
+                    "Label Type": "Box" if case_quantity else "Item",
                     "Label Product Name": product_name or "",
                     "Left Bar Text": _bar_l,
                     "Right Bar Text": _bar_r,
                     "SDS # (link to SDS tab)": _sds_no,
+                    "Notes": f"Source {pdf_filename}",
                 }
                 _res = master_repo.save_draft("labels", _row, who="Label Builder")
                 master_data.refresh()
