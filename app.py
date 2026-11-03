@@ -235,6 +235,7 @@ def _load_from_master():
         ss["vertical_name"] = prod["vertical"]
     ss["product_code"] = code
     ss["product_name"] = prod.get("title") or ""
+    ss["_name_from_master"] = bool(ss["product_name"])
     # Best-effort match of the master's packaging to a label size
     if cat and cat != "Tape":
         opts = [p for p in PRODUCT_SIZES if cat in available_categories_for_product(p) and PRODUCT_SIZES[p]["item_label"]]
@@ -525,11 +526,12 @@ with left:
         if st.session_state.sds_data and use_compact_layout else []
     )
     if all_ingredients:
-        st.markdown("**Ingredients to List** (uncheck any not required on this label)")
+        st.markdown("**Ingredients to List** (only hazardous ingredients are listed; non-hazardous catch-all lines start unchecked)")
         selected_ingredients = []
         for i, ing in enumerate(all_ingredients):
-            label = f"{ing['chemical_name']} (CAS #: {ing['cas_number']})"
-            if st.checkbox(label, value=True, key=f"ingredient_{i}"):
+            _nh = master_data.is_non_hazardous(ing.get("chemical_name"))
+            label = f"{ing['chemical_name']} (CAS #: {ing['cas_number']})" + ("  -- non-hazardous, not listed by default" if _nh else "")
+            if st.checkbox(label, value=not _nh, key=f"ingredient_{i}"):
                 selected_ingredients.append(ing)
     else:
         selected_ingredients = []
@@ -552,7 +554,10 @@ with left:
     else:
         has_color = st.radio("Does this product have a color?", ["No", "Yes"], horizontal=True)
         badge_color = st.text_input("Color", placeholder="e.g. WHITE").upper() if has_color == "Yes" else None
-    product_name = st.text_input("Product Name/Type (below the badge box)", placeholder="e.g. Acetoxy Silicone", key="product_name")
+    _lock_name = bool(use_master and st.session_state.get("_name_from_master") and st.session_state.get("product_name"))
+    product_name = st.text_input("Product Name/Type (below the badge box)", placeholder="e.g. Acetoxy Silicone", key="product_name",
+                                 disabled=_lock_name,
+                                 help="Locked to the master product name so every document matches. Change it in the master (TDS) to change it here." if _lock_name else None)
     if use_compact_layout:
         sales_description = st.text_input("Sales Description (orange bar)")
     else:

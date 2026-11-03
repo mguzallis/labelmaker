@@ -103,12 +103,9 @@ PRODUCT_SIZES = {
         "pallet_quantity": 36,
     },
     "108L Canister": {
-        # NOT verified against a real template yet (unlike 22L Canister and
-        # Aerosol Can, both of which turned out to have transposed
-        # dimensions here). Treat this value as unconfirmed -- do not
-        # assume it's already correct, and do not assume it shares either
-        # of the other two products' aspect ratio.
-        "item_label": _dim("12x4.125"),
+        # Now the same label size as the 22L Canister (11.5x3.5) -- changed
+        # on request (previously an unverified 12x4.125).
+        "item_label": _dim("11.5x3.5"),
         "box_label": None,
         "box_quantity": None,
         "pallet_quantity": 9,

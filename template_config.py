@@ -164,7 +164,7 @@ def register_template(category, vertical, dimension_group, filepath):
 # gets them without a separate init step. All seven Marine dimension
 # groups now have a measured zone set (layout_config.py) AND a real baked
 # background registered here.
-for dim in ["8x6", "8.25x6.25", "6x4", "8x8", "11.5x3.5", "12x4.125", "8.25x6.5"]:
+for dim in ["8x6", "8.25x6.25", "6x4", "8x8", "11.5x3.5", "8.25x6.5"]:
     register_template("Adhesive", "Marine", dim, f"baked_backgrounds_wip/marine_{dim}_v1_current.png")
     register_template("Sealant", "Marine", dim, f"baked_backgrounds_wip/marine_{dim}_v1_current.png")
 
@@ -175,7 +175,7 @@ for dim in ["8x6", "8.25x6.25", "6x4", "8x8", "11.5x3.5", "12x4.125", "8.25x6.5"
 # disagreed with (see layout_config.py note, and /areas/label-generator.md)
 # -- standardized to the common layout rather than propagating the
 # one-off exception.
-for dim in ["8x6", "8x8", "6x4", "8.25x6.25", "8.25x6.5", "11.5x3.5", "12x4.125"]:
+for dim in ["8x6", "8x8", "6x4", "8.25x6.25", "8.25x6.5", "11.5x3.5"]:
     register_template("Sealant", "Industrial", dim, f"baked_backgrounds_wip/industrial_{dim}_v1_current.png")
     register_template("Adhesive", "Industrial", dim, f"baked_backgrounds_wip/industrial_{dim}_v1_current.png")
     register_template("Sealant", "Transportation", dim, f"baked_backgrounds_wip/transportation_{dim}_v1_current.png")
@@ -189,7 +189,7 @@ for dim in ["8x6", "8x8", "6x4", "8.25x6.25", "8.25x6.5", "11.5x3.5", "12x4.125"
 # Insulation has no 28oz Cartridge (8x8) background -- no source material
 # was provided for this vertical/size combination. Deliberately left
 # unregistered rather than guessed at; get_template() will raise clearly.
-for dim in ["8x6", "8x8", "6x4", "8.25x6.25", "8.25x6.5", "11.5x3.5", "12x4.125"]:
+for dim in ["8x6", "8x8", "6x4", "8.25x6.25", "8.25x6.5", "11.5x3.5"]:
     register_template("Sealant", "Composites", dim, f"baked_backgrounds_wip/composites_{dim}_v1_current.png")
     register_template("Adhesive", "Composites", dim, f"baked_backgrounds_wip/composites_{dim}_v1_current.png")
     register_template("Adhesive", "Construction", dim, f"baked_backgrounds_wip/construction_{dim}_v1_current.png")
@@ -212,7 +212,7 @@ for dim in ["8x6", "8x8", "6x4", "8.25x6.25"]:
     register_template("Adhesive", "Transportation", dim, "DYNAMIC")
     register_template("Sealant", "Construction", dim, "DYNAMIC")
     register_template("Adhesive", "Construction", dim, "DYNAMIC")
-for dim in ["8.25x6.5", "11.5x3.5", "12x4.125"]:
+for dim in ["8.25x6.5", "11.5x3.5"]:
     register_template("Sealant", "Insulation", dim, f"baked_backgrounds_wip/insulation_{dim}_v1_current.png")
     register_template("Adhesive", "Insulation", dim, f"baked_backgrounds_wip/insulation_{dim}_v1_current.png")
 for dim in ["8x6", "6x4", "8.25x6.25"]:
