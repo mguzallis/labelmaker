@@ -526,11 +526,11 @@ with left:
         if st.session_state.sds_data and use_compact_layout else []
     )
     if all_ingredients:
-        st.markdown("**Ingredients to List** (only hazardous ingredients are listed; non-hazardous catch-all lines start unchecked)")
+        st.markdown("**Ingredients to List** (only hazardous ingredients are listed; non-hazardous catch-all lines and dyes start unchecked)")
         selected_ingredients = []
         for i, ing in enumerate(all_ingredients):
             _nh = master_data.is_non_hazardous(ing.get("chemical_name"))
-            label = f"{ing['chemical_name']} (CAS #: {ing['cas_number']})" + ("  -- non-hazardous, not listed by default" if _nh else "")
+            label = f"{ing['chemical_name']} (CAS #: {ing['cas_number']})" + ("  -- non-hazardous / dye, not listed by default" if _nh else "")
             if st.checkbox(label, value=not _nh, key=f"ingredient_{i}"):
                 selected_ingredients.append(ing)
     else:

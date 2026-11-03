@@ -130,12 +130,13 @@ def _statements(text, rx):
     return items
 
 
-_NON_HAZ = re.compile(r"non[\s-]*haz|not\s+classified\s+as\s+hazardous|other\s+(?:ingredients|components)", re.I)
+_NON_HAZ = re.compile(r"non[\s-]*haz|not\s+classified\s+as\s+hazardous|other\s+(?:ingredients|components)|\bdyes?\b", re.I)
 
 
 def is_non_hazardous(name):
-    """True for catch-all SDS lines such as 'Other Non-Hazardous Ingredients'.
-    Labels only list hazardous ingredients, so these start unchecked."""
+    """True for catch-all SDS lines such as 'Other Non-Hazardous Ingredients'
+    and for dyes (Red/Green/Blue Dye). Labels only list hazardous ingredients,
+    so these start unchecked."""
     return bool(_NON_HAZ.search(name or ""))
 
 
