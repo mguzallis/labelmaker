@@ -39,6 +39,7 @@ ADHESIVE_ONLY_PRODUCT_TYPES = [
     "108L Canister",
     "22L Canister",
     "Aerosol Can",
+    "55 Gallon Drum",   # spray adhesive only
 ]
 
 
