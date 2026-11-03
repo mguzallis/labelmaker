@@ -31,10 +31,10 @@ KEYS = {
     "sds": ["File Name"],            # becomes ["SDS #"] once all SDSs are on the current template
     "product_sds_map": ["Product Code"],
     "sds_ghs_status": ["File Name"],
-    "labels": ["Product Code", "Size / Container", "Color"],
+    "labels": ["Product Code", "Size / Container", "Color", "Label Type"],
 }
 # Key columns that may legitimately be blank (a product with no color).
-OPTIONAL_KEYS = {"labels": ("Color",)}
+OPTIONAL_KEYS = {"labels": ("Color", "Label Type")}
 # Which app owns which tab (apps must not write another app's tab).
 OWNER = {"tds": "TDS Builder", "sds": "SDS Formatter", "labels": "Label Builder",
          "product_sds_map": "Product Marketing", "sds_ghs_status": "Report"}

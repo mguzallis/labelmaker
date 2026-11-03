@@ -96,7 +96,7 @@ def _sanitize_filename_part(s):
 
 
 def build_label_filename(ap_number, revision_number, product_code, product_type,
-                          canvas_size_in, is_tape=False, tape_size_label=""):
+                          canvas_size_in, is_tape=False, tape_size_label="", is_box=False):
     """Build the standardized PDF filename:
     APNumber_N#-ProductCode_ProductSize_ProductType_LabelSize_PDFSize
     'PDFSize' is a fixed literal suffix, everything else depends on input.
@@ -115,8 +115,12 @@ def build_label_filename(ap_number, revision_number, product_code, product_type,
     # code -- "APNumber_N#-ProductCode_..." -- every other join is an
     # underscore.
     ap_and_code = "-".join(p for p in [ap_part, product_code] if p)
-    parts = [ap_and_code, size_type_part, label_size, "PDFSize"]
-    name = "_".join(_sanitize_filename_part(p) for p in parts if p)
+    # Convention: AP_N#-Code_[BXLBL]_Size_Type_Dimensions_PDFsize. The BXLBL slot
+    # is kept (left empty) on single-product labels, giving the double underscore
+    # in e.g. AP1708_N1-OS40__10.1oz_Cartridge_8x6_PDFsize.
+    box_part = "BXLBL" if is_box else ""
+    parts = [ap_and_code, box_part, size_type_part, label_size, "PDFsize"]
+    name = "_".join(_sanitize_filename_part(p) for p in parts[:1] + [parts[1]] + [p for p in parts[2:] if p])
     return f"{name}.pdf"
 
 
@@ -222,10 +226,28 @@ def _label_size_matches(row_size, ptype, cat):
     return row_size == (ptype or "").strip().lower()
 
 
+def _row_is_box(r):
+    return (r.get("Label Type") or "").strip().lower().startswith("box")
+
+
+def _want_box():
+    return st.session_state.get("box_label_radio", "No") == "Yes"
+
+
+def _candidate_labels(code, ptype, cat):
+    """Existing master labels for this code + product type, narrowed to item vs
+    box label (and to the chosen color, when one has been set)."""
+    rows = [r for r in master_data.label_rows(code)
+            if _label_size_matches(r.get("Size / Container"), ptype, cat)
+            and _row_is_box(r) == _want_box()]
+    return rows
+
+
 def _label_option(r):
     bits = [(r.get("AP #") or "").strip(), (r.get("Revision") or "").strip()]
     head = " ".join(b for b in bits if b) or "no AP #"
-    tail = " / ".join(x for x in [(r.get("Size / Container") or "").strip(), (r.get("Color") or "").strip()] if x)
+    tail = " / ".join(x for x in [(r.get("Size / Container") or "").strip(), (r.get("Color") or "").strip(),
+                                  "BOX LABEL" if _row_is_box(r) else ""] if x)
     return f"{head} -- {tail}"
 
 
@@ -343,11 +365,14 @@ def _load_from_master():
     ss.rendered_label = None
     # Prefill AP #, revision, color and bar text from an existing label for this product
     try:
-        _rows_ = [r for r in master_data.label_rows(code)
-                  if _label_size_matches(r.get("Size / Container"), ss.get("product_type"), ss.get("category"))]
-        if _rows_:
+        _rows_ = _candidate_labels(code, ss.get("product_type"), ss.get("category"))
+        # Only auto-fill when exactly one label matches; with several (e.g. one per
+        # color) the user picks from the list so the wrong AP # is never assumed.
+        if len(_rows_) == 1:
             _apply_label_row(_rows_[0])
             ss["existing_label_choice"] = _label_option(_rows_[0])
+        else:
+            ss["existing_label_choice"] = "(none -- fill in manually)"
     except Exception:
         pass
 
@@ -443,7 +468,7 @@ with left:
         is_cartridge = "Cartridge" in product_type
         has_box_variant = PRODUCT_SIZES[product_type].get("box_quantity") is not None
         if has_box_variant:
-            box_label = st.radio("Box Label?", ["No", "Yes"], horizontal=True)
+            box_label = st.radio("Box Label?", ["No", "Yes"], horizontal=True, key="box_label_radio")
             if box_label == "Yes":
                 qty_prefix = "Case Quantity:" if is_cartridge else "QTY:"
                 # Every other category's case quantity is the fixed,
@@ -598,8 +623,7 @@ with left:
     st.subheader("3. Label Text")
     if use_master:
         try:
-            _ex = [r for r in master_data.label_rows(st.session_state.get("product_code") or "")
-                   if _label_size_matches(r.get("Size / Container"), product_type, category)]
+            _ex = _candidate_labels(st.session_state.get("product_code") or "", product_type, category)
         except Exception:
             _ex = []
         if _ex:
@@ -780,6 +804,7 @@ with right:
             (dual_filename_size or size_label_text) if not is_tape else "",
             canvas_size_in, is_tape=is_tape,
             tape_size_label=tape_size_label if is_tape else "",
+            is_box=bool(case_quantity),
         )
         # Set the PDF's internal Title metadata to match the filename
         # (minus the .pdf extension) -- most PDF viewers display this
