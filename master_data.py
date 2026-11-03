@@ -111,28 +111,48 @@ def sds_choices(code):
     return []
 
 
-_H = re.compile(r"(H\d{3}(?:\s*\+\s*H\d{3})*)\s*[–—:\-]?\s*")
-_P = re.compile(r"(P\d{3}(?:\s*\+\s*P\d{3})*)\s*[–—:\-,]?\s*")
+_H = re.compile(r"(H\d{3}(?:\s*[+/]\s*H\d{3})*)\s*[–—:\-]?\s*")
+_P = re.compile(r"(P\d{3}(?:\s*[+/]\s*P\d{3})*)\s*[–—:\-,]?\s*")
+
+# Section headings / bullets that the SDS parse left inside the statement lists
+_HEADING = re.compile(r"^(?:precautionary\s+statements?\b.*|hazard\s+statements?\b.*|prevention|response|storage|disposal)\s*[:.]?\s*$", re.I)
+_BULLETS = re.compile(r"^[\s●•▪◦·]+")
+_TRAIL_HEADING = re.compile(r"\s*(?:precautionary\s+statements?|hazard\s+statements?)\b.*$", re.I)
+
+
+def _norm_code(c):
+    c = re.sub(r"\s*\+\s*", " + ", c)
+    return re.sub(r"\s*/\s*", " / ", c)
+
+
+def _real_text(t):
+    return len(re.findall(r"[A-Za-z]", t or "")) >= 4
 
 
 def _statements(text, rx):
     """Split master statement text into [{code, text}]. Lines can hold one or
-    several coded statements, or plain text (older SDS) with code ""."""
+    several coded statements, or plain text (older SDS) with code "".
+    Section headings ("Prevention", "Precautionary statements - Response"),
+    bullet glyphs and stray punctuation are dropped."""
     items = []
     for line in _lines(text):
+        line = _BULLETS.sub("", line).strip()
+        if not line or _HEADING.match(line):
+            continue
         ms = list(rx.finditer(line))
         if not ms:
-            items.append({"code": "", "text": line})
+            line = _TRAIL_HEADING.sub("", line).strip()
+            if _real_text(line):
+                items.append({"code": "", "text": line})
             continue
-        lead = line[:ms[0].start()].strip()
-        if lead:
+        lead = _TRAIL_HEADING.sub("", line[:ms[0].start()]).strip()
+        if _real_text(lead):
             items.append({"code": "", "text": lead})
         for i, m in enumerate(ms):
             end = ms[i + 1].start() if i + 1 < len(ms) else len(line)
-            code = re.sub(r"\s*\+\s*", " + ", m.group(1))
-            body = line[m.end():end].strip(" ,;")
-            if body:
-                items.append({"code": code, "text": body})
+            body = _TRAIL_HEADING.sub("", line[m.end():end]).strip(" ,;/")
+            if _real_text(body):
+                items.append({"code": _norm_code(m.group(1)), "text": body})
     return items
 
 
