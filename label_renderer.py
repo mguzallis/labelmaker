@@ -1179,8 +1179,6 @@ def render_label(
             icon_size = icon_x1 - icon_x
         else:
             _icon_size_ratio = 1.733 if dimension_group != "8x8" else 1.733 * 0.85
-            if vertical_name == "Composites":
-                _icon_size_ratio *= 1.15
             icon_size = int(box_h * _icon_size_ratio)
             icon_top_offset = box_h * 0.605
             icon_center_x = bx1 - box_h * 0.52
