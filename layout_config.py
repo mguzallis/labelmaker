@@ -217,6 +217,13 @@ def bar_box_zone_px(name, vertical_name, dimension_group, canvas_w, canvas_h):
 
 
 BADGE_ZONES_BY_VERTICAL = {
+    # Marine's baked backgrounds have the white badge box and icon painted in
+    # at their own positions (measured from the baked PNGs); without these the
+    # code text was placed using the generic zone and missed the painted box.
+    ('Marine','8x6'): (0.5221, 0.1956, 0.8138, 0.3167),
+    ('Marine','8x8'): (0.5225, 0.2450, 0.8150, 0.3358),
+    ('Marine','6x4'): (0.5233, 0.2200, 0.8172, 0.3567),
+    ('Marine','8.25x6.25'): (0.5248, 0.1909, 0.8267, 0.3147),
     ('Industrial','8x8'): (0.5575, 0.0879, 0.8304, 0.1821),  # measured directly from the real blank PDF (AP702), corrected
     ('Composites','8x8'): (0.528, 0.1921, 0.838, 0.2958),  # measured directly from the real blank PDF (AP1156)
     ('Composites','8.25x6.25'): (0.687, 0.1557, 0.895, 0.2469),  # measured directly from the real blank PDF (AP1158)
@@ -258,6 +265,10 @@ BADGE_ZONES_BY_VERTICAL = {
 # every other vertical's, so the same measurement approach didn't apply
 # cleanly) -- falls back to the formula for Composites specifically.
 ICON_ZONES_BY_VERTICAL = {
+    ('Marine','8x6'): (0.7854, 0.1239, 0.9362, 0.3244),
+    ('Marine','8x8'): (0.7858, 0.1912, 0.9367, 0.3412),
+    ('Marine','6x4'): (0.7883, 0.1383, 0.9400, 0.3650),
+    ('Marine','8.25x6.25'): (0.7976, 0.1173, 0.9531, 0.3227),
     ('Industrial','8x6'): (0.7641, 0.1005, 0.9498, 0.3481),
     ('Industrial','6x4'): (0.7637, 0.0556, 0.9486, 0.3330),
     ('Industrial','8.25x6.25'): (0.7753, 0.0900, 0.9668, 0.3427),
