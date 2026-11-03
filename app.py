@@ -63,6 +63,9 @@ BADGE_ICONS = {
 DEFAULT_BADGE_ICON = "vertical_badge_icons/Construction.png"
 
 
+DUAL_SIZES = ["50ml", "300ml", "400ml"]
+DUAL_SIZE_OTHER = "Other..."
+
 _SIZE_TYPE_SPLIT_RE = re.compile(r"^(\d[\d.]*\s*[A-Za-z]+)\s+(.+)$")
 
 
@@ -239,9 +242,13 @@ def _load_from_master():
                       if re.search(r"\d\s*m[lL]\b", pk) and "cartridge" in pk.lower()), None)
         if _dual and master_data.part_choices(master_data.sds_choices(code)):
             ss["product_type"] = "Dual Cartridge"
-            ss["cartridge_size_text"] = re.sub(r"(\d)\s*m[lL]\b", r"\1 mL", _dual)
-            if "dual" in _dual.lower():
-                ss["cartridge_size_text"] = re.sub(r"\s*dual\s*", " ", ss["cartridge_size_text"], flags=re.I).strip()
+            _ml = re.search(r"(\d+(?:\.\d+)?)\s*m[lL]\b", _dual).group(1)
+            _sz = f"{_ml}ml"
+            if _sz in DUAL_SIZES:
+                ss["dual_size_choice"] = _sz
+            else:
+                ss["dual_size_choice"] = DUAL_SIZE_OTHER
+                ss["dual_size_other"] = _sz
         for pk in ([] if ss.get("product_type") == "Dual Cartridge" else prod.get("packaging", [])):
             hit = next((o for o in opts if o.lower() == pk.lower()
                         or o.lower().replace(" ", "") == pk.lower().replace(" ", "")), None)
@@ -331,9 +338,14 @@ with left:
     # Dual (two-part) cartridges share one 6x4 label for product and box; the
     # size printed on it varies per product, so it is typed (or loaded from the master).
     size_label_text = product_type
+    dual_filename_size = None
     if not is_tape and product_type == "Dual Cartridge":
-        size_label_text = st.text_input("Size shown on the label", placeholder="e.g. 400 mL Cartridge",
-                                        key="cartridge_size_text") or product_type
+        _choice = st.selectbox("Cartridge size", DUAL_SIZES + [DUAL_SIZE_OTHER], key="dual_size_choice")
+        if _choice == DUAL_SIZE_OTHER:
+            _choice = st.text_input("Size (e.g. 200ml)", key="dual_size_other").strip()
+        _size = _choice or "400ml"
+        size_label_text = f"SIZE: {_size}"   # footer reads "SIZE: 400ml"
+        dual_filename_size = f"AB_{_size}"
 
     vertical_name = st.selectbox("Vertical Market", list(VERTICAL_BACKGROUNDS.keys()), key="vertical_name")
     badge_icon_path = BADGE_ICONS.get(vertical_name, DEFAULT_BADGE_ICON)
@@ -686,7 +698,7 @@ with right:
 
         pdf_filename = build_label_filename(
             ap_number, revision_number, product_code,
-            size_label_text if not is_tape else "",
+            (dual_filename_size or size_label_text) if not is_tape else "",
             canvas_size_in, is_tape=is_tape,
             tape_size_label=tape_size_label if is_tape else "",
         )

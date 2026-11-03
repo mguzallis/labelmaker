@@ -834,7 +834,7 @@ def render_compact_label(
 
     sz_x0, sz_y0, sz_x1, sz_y1 = compact_zone_px("size_text", W, H, dimension_group=dimension_group)
     size_font = _font("bold", int(0.024 * H))
-    size_line = f"SIZE: {size_label}"
+    size_line = size_label if str(size_label).upper().startswith("SIZE:") else f"SIZE: {size_label}"
     size_w = size_font.getlength(size_line)
     draw.text((sz_x0 + ((sz_x1 - sz_x0) - size_w) / 2, sz_y0), size_line, font=size_font, fill=COLOR_WHITE)
     if case_quantity:
@@ -2332,7 +2332,7 @@ def render_tape_label(
     footer_font_size = int(0.018 * H)
     footer_font = _font("kallisto", footer_font_size)
     fy0 = px(250.0)
-    draw.text((px(52.9), fy0), f"SIZE: {size_label}", font=footer_font, fill=COLOR_WHITE)
+    draw.text((px(52.9), fy0), (size_label if str(size_label).upper().startswith("SIZE:") else f"SIZE: {size_label}"), font=footer_font, fill=COLOR_WHITE)
     draw.text((px(52.9), fy0 + footer_font_size * 1.15), f"Case Quantity: {case_quantity}", font=footer_font, fill=COLOR_WHITE)
     draw.text((px(217.1), fy0), lot_number, font=footer_font, fill=COLOR_WHITE)
     label_display = internal_label_number if internal_label_number else product_code
