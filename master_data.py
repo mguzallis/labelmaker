@@ -111,7 +111,7 @@ def sds_choices(code):
     return []
 
 
-_H = re.compile(r"(H\d{3}(?:\s*[+/]\s*H\d{3})*)\s*[–—:\-]?\s*")
+_H = re.compile(r"(H\d{3}[a-z]{0,2}(?:\s*[+/]\s*H\d{3}[a-z]{0,2})*)\s*[–—:\-]?\s*")
 _P = re.compile(r"(P\d{3}(?:\s*[+/]\s*P\d{3})*)\s*[–—:\-,]?\s*")
 
 # Section headings / bullets that the SDS parse left inside the statement lists
@@ -135,6 +135,12 @@ def _statements(text, rx):
     Section headings ("Prevention", "Precautionary statements - Response"),
     bullet glyphs and stray punctuation are dropped."""
     items = []
+    # Statements that wrap across lines ("P303 +" / "P361 + P353 ..."), inline section
+    # headings ("... Response: P301 ...") and the carcinogen block some SDSs print right
+    # after the P statements are cleaned up before splitting.
+    text = re.split(r"Potential Health Effects", text or "", maxsplit=1, flags=re.I)[0]
+    text = re.sub(r"([+/])[ \t]*\n[ \t]*", r"\1 ", text)
+    text = re.sub(r"\b(?:Prevention|Response|Storage|Disposal)\s*:\s*(?=[HP]\d{3})", "", text, flags=re.I)
     for line in _lines(text):
         line = _BULLETS.sub("", line).strip()
         if not line or _HEADING.match(line):
@@ -147,7 +153,10 @@ def _statements(text, rx):
             continue
         lead = _TRAIL_HEADING.sub("", line[:ms[0].start()]).strip()
         if _real_text(lead):
-            items.append({"code": "", "text": lead})
+            if items and items[-1]["code"]:
+                items[-1]["text"] = (items[-1]["text"] + " " + lead).strip()   # wrapped continuation
+            else:
+                items.append({"code": "", "text": lead})
         for i, m in enumerate(ms):
             end = ms[i + 1].start() if i + 1 < len(ms) else len(line)
             body = _TRAIL_HEADING.sub("", line[m.end():end]).strip(" ,;/")

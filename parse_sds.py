@@ -138,7 +138,7 @@ def _split_numbered_headings(full_text):
 
 
 def extract_signal_word(section2_text):
-    m = re.search(r"Signal\s+Word:?[ \t]*([A-Za-z]+)", section2_text, re.IGNORECASE)
+    m = re.search(r"Signal\s+Word\s*:?[ \t]*([A-Za-z]+)", section2_text, re.IGNORECASE)
     return m.group(1).strip() if m else None
 
 
@@ -227,7 +227,7 @@ def extract_hazard_statements(section2_text):
         return []
     # No H-codes: treat each line of the block as one statement, merging
     # wrapped continuation lines (start lowercase) into the previous one.
-    lines = [l.strip().lstrip("•o-–— ").strip() for l in m.group(1).split("\n")]
+    lines = [re.sub(r"^(?:[•\u2022o\-–—]\s+|[•\u2022\-–—]+\s*)", "", l.strip()).strip() for l in m.group(1).split("\n")]
     lines = [l for l in lines if l and not re.match(r"(Page\s+\d+\s+of\s+\d+|DCN:)", l, re.I)]
     merged = []
     for line in lines:
@@ -453,7 +453,7 @@ def extract_legacy_ingredients(section3_text):
 
 _ROW_RE = re.compile(
     r"^(?P<name>[A-Za-z][^\n]*?)\s+(?P<cas>\d{2,7}-\d{2}-\d(?:;\s*\d{2,7}-\d{2}-\d)*|Proprietary|\[See[^\]]*\]|Mixture)\s+"
-    r"(?P<pct>[<>≤≥]?\s*[\d.]+(?:\s*[-–]\s*[\d.]+)?\s*%|Balance)", re.I)
+    r"(?P<pct>[<>≤≥]?\s*[\d.]+(?:\s*[-–]\s*[\d.]+)?\s*%?|Balance)\s*$", re.I)
 
 
 def extract_table_rows_from_text(section3_text):
@@ -487,7 +487,7 @@ def extract_field(section_text, labels):
         labels = [labels]
     for label in labels:
         pattern = re.compile(
-            rf"{re.escape(label)}:?\s*(.+?)(?=\n[A-Z][A-Za-z /]+:|\nSECTION|$)",
+            rf"{re.escape(label)}\s*:?\s*(.+?)(?=\n[A-Z][A-Za-z /]+\s*:|\nSECTION|$)",
             re.DOTALL | re.IGNORECASE,
         )
         m = pattern.search(section_text)
@@ -513,9 +513,20 @@ def extract_field(section_text, labels):
                 text = "; ".join(bullet_items)
             else:
                 text = _join_wrapped(lines)
+            text = re.sub(r"^[:\s]+", "", text or "").replace("wellventilated", "well-ventilated")
             if text:
                 return text
     return None
+
+
+def _strip_title(section_text):
+    """Section bodies can start with the rest of the heading ('. DISPOSAL
+    CONSIDERATIONS', '. HANDLING AND STORAGE'); drop it so field labels such as
+    'Disposal' or 'Storage' are not matched inside the heading itself."""
+    if section_text.lstrip().startswith(".") or re.match(r"^[A-Z /,&\-]{6,}$", section_text.split("\n", 1)[0].strip() or "x"):
+        parts = section_text.split("\n", 1)
+        return parts[1] if len(parts) > 1 else ""
+    return section_text
 
 
 def parse_sds(pdf_path):
@@ -524,8 +535,8 @@ def parse_sds(pdf_path):
 
     section2 = sections.get("2", "")
     section3 = sections.get("3", "")
-    section7 = sections.get("7", "")
-    section13 = sections.get("13", "")
+    section7 = _strip_title(sections.get("7", ""))
+    section13 = _strip_title(sections.get("13", ""))
 
     classification_lines = extract_classification(section2)
     hazard_statements = extract_hazard_statements(section2)
@@ -538,8 +549,8 @@ def parse_sds(pdf_path):
         "precautionary_statements": extract_precautionary_statements(section2),
         "ingredients": extract_ingredients(pdf_path),
         "storage": extract_field(section7, ["Conditions for Safe Storage", "Storage"]),
-        "handling": extract_field(section7, ["Precautions for Safe Handling", "Handling"]),
-        "disposal": extract_field(section13, ["Waste Disposal Method", "Waste treatment methods", "Waste treatment", "Disposal"]),
+        "handling": extract_field(section7, ["Precautions for Safe Handling", "Advice on safe handling", "Handling"]),
+        "disposal": extract_field(section13, ["Waste Disposal Method", "Waste from residues", "Waste treatment methods", "Waste treatment", "Disposal"]),
     }
     if not result["ingredients"]:
         result["ingredients"] = extract_table_rows_from_text(section3)
