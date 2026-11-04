@@ -54,6 +54,13 @@ PRODUCT_SIZES = {
         "box_quantity": 20,
         "pallet_quantity": 960,
     },
+    # Quart can: same 6x4 label as the 20oz Sausage. Case quantity varies, so it is typed in.
+    "Quart": {
+        "item_label": _dim("6x4"),
+        "box_label": _dim("6x4"),
+        "box_quantity": "manual",
+        "pallet_quantity": None,
+    },
     "Gallon Can": {
         "item_label": _dim("8.25x6.25"),
         "box_label": _dim("8.25x6.25"),
