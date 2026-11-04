@@ -1755,7 +1755,7 @@ def render_label(
         Section("", tds_bullets_selected, kind="bulleted", protected=True),
     ]
     if category != "Tape" and sds_data:
-        remaining_sections.append(Section("STORAGE", sds_data.get("storage") or "N/A", kind="text"))
+        remaining_sections.append(Section("STORAGE", sds_data.get("storage") or "N/A", kind="text", protected=True))
         remaining_sections.append(Section("WASTE DISPOSAL", sds_data.get("disposal") or "N/A", kind="text", protected=True))
 
     dropped_content = {"left": [], "right": []}
@@ -1768,7 +1768,7 @@ def render_label(
         left_scale, _, left_needed_fallback = fit_and_draw_box(
             None, (blx0, bly0, blx1, bly1), left_sections,
             header_font_size, body_font_size, max_w_left,
-            fill_header=COLOR_ORANGE, measure_only=True,
+            fill_header=COLOR_ORANGE, min_scale=0.5, measure_only=True,
         )
         if left_needed_fallback and not force_exclude_response:
             # Full (P2xx+P3xx) precautions didn't fit even at tightest
@@ -1781,24 +1781,24 @@ def render_label(
                 left_scale, _, _ = fit_and_draw_box(
                     None, (blx0, bly0, blx1, bly1), left_sections,
                     header_font_size, body_font_size, max_w_left,
-                    fill_header=COLOR_ORANGE, measure_only=True,
+                    fill_header=COLOR_ORANGE, min_scale=0.5, measure_only=True,
                 )
         right_scale, _, _ = fit_and_draw_box(
             None, (brx0, bry0, brx1, bry1), remaining_sections,
             header_font_size, body_font_size, max_w_right,
-            fill_header=COLOR_ORANGE, measure_only=True,
+            fill_header=COLOR_ORANGE, min_scale=0.5, measure_only=True,
         )
         shared_scale = min(left_scale, right_scale)
 
         _, left_truncated, dropped_content["left"] = fit_and_draw_box(
             draw, (blx0, bly0, blx1, bly1), left_sections,
             header_font_size, body_font_size, max_w_left,
-            fill_header=COLOR_ORANGE, forced_scale=shared_scale,
+            fill_header=COLOR_ORANGE, min_scale=0.5, forced_scale=shared_scale,
         )
         _, right_truncated, dropped_content["right"] = fit_and_draw_box(
             draw, (brx0, bry0, brx1, bry1), remaining_sections,
             header_font_size, body_font_size, max_w_right,
-            fill_header=COLOR_ORANGE, forced_scale=shared_scale,
+            fill_header=COLOR_ORANGE, min_scale=0.5, forced_scale=shared_scale,
         )
     else:
         _, right_truncated, dropped_content["right"] = fit_and_draw_box(
