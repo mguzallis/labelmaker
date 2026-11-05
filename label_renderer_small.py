@@ -54,10 +54,13 @@ def render_small_label(
     logo = _fit_image(CATEGORY_LOGO[category], (20, 14, 430, 200))
     canvas.paste(logo, (20 + (410 - logo.width) // 2, 14 + (186 - logo.height) // 2), logo)
 
-    px0, px1, py0, py1 = 520, 1075, 96, 158
-    # Vertical name: left edge on the white box's left edge, stretched to run all
-    # the way to the industry icon (same as the main layout), height-capped.
-    vavail = 1030 - px0 - 6
+    # Badge cluster, proportioned like the main layout: the vertical name starts at the
+    # white box's left edge and runs to the industry icon; the box is slim and runs under
+    # the icon; the product name is left-aligned under the box.
+    ICON = 140
+    icon_x, icon_y = 950, 34
+    px0, px1, py0, py1 = 590, 1030, 72, 126
+    vavail = icon_x - px0 - 6
     vsize = 100
     vf = _font("kallisto", vsize)
     vsize = min(int(vsize * vavail / vf.getlength(vertical_name)), 100)
@@ -65,47 +68,48 @@ def render_small_label(
     vbb = vf.getbbox(vertical_name)
     vy = py0 - 8 - (vbb[3] - vbb[1]) - vbb[1]
     items = [((px0, vy), vertical_name, vf)]
-    pf = _font("bold", 30)
+    pf = _font("bold", 28)
     if len((product_name or "")) > 24:
         pf = _font("bold", 26)   # long names wrap to two lines -- keep clear of the bars
     pn_lines = []
     cur = ""
     for wd in (product_name or "").split():
         t = (cur + " " + wd).strip()
-        if pf.getlength(t) <= 620:
+        if pf.getlength(t) <= 1090 - px0:
             cur = t
         else:
             pn_lines.append(cur); cur = wd
     pn_lines.append(cur)
     pn_lines = pn_lines[:2]
     for i, l in enumerate(pn_lines):
-        items.append(((int(785 - pf.getlength(l) / 2), 164 + i * 28), l, pf))
+        items.append(((px0, 134 + i * 30), l, pf))
     canvas = _apply_text_shadow(canvas, items, W, H)
     draw = ImageDraw.Draw(canvas)
     draw.text(items[0][0], vertical_name, font=vf, fill=COLOR_WHITE)
     for (xy, l, f) in items[1:]:
         draw.text(xy, l, font=f, fill=COLOR_WHITE)
 
-    draw.rounded_rectangle((px0, py0, px1, py1), 36, fill=COLOR_WHITE)
-    code_avail = (px1 - px0) - 40
-    size = 54 if not badge_color else 46
+    draw.rounded_rectangle((px0, py0, px1, py1), 27, fill=COLOR_WHITE)
+    code_cx = (px0 + icon_x) // 2
+    code_avail = (icon_x - px0) - 30
+    size = 46 if not badge_color else 40
     cf = _font("kallisto", size)
-    while cf.getlength(product_code) > code_avail and size > 20:
+    while cf.getlength(product_code) > code_avail and size > 18:
         size -= 1
         cf = _font("kallisto", size)
     if badge_color:
-        sf = _font("kallisto", max(int(size * 0.42), 14))
+        sf = _font("kallisto", max(int(size * 0.42), 12))
         bb = cf.getbbox(product_code); sb = sf.getbbox(badge_color.upper())
-        total = (bb[3] - bb[1]) + 8 + (sb[3] - sb[1])
+        total = (bb[3] - bb[1]) + 6 + (sb[3] - sb[1])
         y0 = py0 + ((py1 - py0) - total) // 2
-        draw.text(((px0 + px1) // 2 - cf.getlength(product_code) / 2, y0 - bb[1]), product_code, font=cf, fill=code_color)
-        draw.text(((px0 + px1) // 2 - sf.getlength(badge_color.upper()) / 2, y0 + (bb[3] - bb[1]) + 8 - sb[1]),
+        draw.text((code_cx - cf.getlength(product_code) / 2, y0 - bb[1]), product_code, font=cf, fill=code_color)
+        draw.text((code_cx - sf.getlength(badge_color.upper()) / 2, y0 + (bb[3] - bb[1]) + 6 - sb[1]),
                   badge_color.upper(), font=sf, fill=code_color)
     else:
-        draw.text(((px0 + px1) // 2, (py0 + py1) // 2), product_code, font=cf, fill=code_color, anchor="mm")
+        draw.text((code_cx, (py0 + py1) // 2), product_code, font=cf, fill=code_color, anchor="mm")
     if badge_icon_path and os.path.exists(badge_icon_path):
-        icon = Image.open(badge_icon_path).convert("RGBA").resize((150, 150), Image.LANCZOS)
-        canvas.paste(icon, (1030, 34), icon)
+        icon = Image.open(badge_icon_path).convert("RGBA").resize((ICON, ICON), Image.LANCZOS)
+        canvas.paste(icon, (icon_x, icon_y), icon)
         draw = ImageDraw.Draw(canvas)
 
     # ---- orange bars
