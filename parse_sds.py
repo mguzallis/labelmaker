@@ -194,11 +194,41 @@ def derive_pictograms(classification_lines, hazard_statements=None):
             if hc in HCODE_TO_PICTOGRAM:
                 found.add(HCODE_TO_PICTOGRAM[hc])
     for line in classification_lines:
-        lower = line.lower()
-        for keyword, code in CLASSIFICATION_TO_PICTOGRAM.items():
-            if keyword in lower:
-                found.add(code)
+        found |= _line_pictograms(line)
     return sorted(found)
+
+
+def _line_pictograms(line):
+    """Pictograms for one Classification line, category-aware: Acute
+    toxicity Cat 1-3 is the skull (GHS06) but Cat 4 is the exclamation mark
+    (GHS07, Cat 5 has none); STOT single exposure Cat 3 (irritation /
+    drowsiness) is the exclamation mark, Cat 1-2 and repeated exposure are
+    the health-hazard symbol (GHS08)."""
+    lower = line.lower()
+    out = set()
+    cat = re.search(r"categor(?:y|ies)\s*([1-5])", lower)
+    cat = int(cat.group(1)) if cat else None
+    for keyword, code in CLASSIFICATION_TO_PICTOGRAM.items():
+        if keyword not in lower:
+            continue
+        if keyword in ("serious eye damage", "eye damage") and "irrit" in lower and cat != 1 and "h318" not in lower:
+            continue  # "Serious eye damage/eye irritation - Category 2A" is the exclamation mark, not corrosion
+        if keyword == "acute toxicity":
+            if cat in (1, 2, 3):
+                out.add("GHS06")
+            elif cat == 4:
+                out.add("GHS07")
+            elif cat is None:
+                out.add("GHS06")  # unknown severity: keep the safer, stricter symbol
+        elif keyword == "stot":
+            single = re.search(r"\bse\b|single", lower)
+            if single and cat == 3:
+                out.add("GHS07")
+            else:
+                out.add("GHS08")
+        else:
+            out.add(code)
+    return out
 
 
 def extract_hazard_statements(section2_text):
