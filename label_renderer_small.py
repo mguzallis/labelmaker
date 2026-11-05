@@ -51,48 +51,48 @@ def render_small_label(
     code_color = VERTICAL_BADGE_TEXT_COLOR.get(vertical_name, DEFAULT_BADGE_TEXT_COLOR)
 
     # ---- top: logo | vertical name + badge pill + product name
-    logo = _fit_image(CATEGORY_LOGO[category], (20, 14, 430, 200))
-    canvas.paste(logo, (20 + (410 - logo.width) // 2, 14 + (186 - logo.height) // 2), logo)
+    logo = _fit_image(CATEGORY_LOGO[category], (0, 0, 410, 186))
+    # The logo and the badge cluster (vertical name / code box / icon) are centred on the
+    # label as one group, with equal left and right margins.
+    CLUSTER_W, GAP = 481, 60
+    margin = (W - (logo.width + GAP + CLUSTER_W)) // 2
+    DX = margin + logo.width + GAP - 588
+    canvas.paste(logo, (margin, 14 + (186 - logo.height) // 2), logo)
 
-    # Badge cluster, proportioned like the main layout: the vertical name starts at the
-    # white box's left edge and runs to the industry icon; the box is slim and runs under
-    # the icon; the product name is left-aligned under the box.
-    ICON = 140
-    icon_x, icon_y = 950, 34
-    px0, px1, py0, py1 = 590, 1030, 72, 126
+    # Badge cluster: every dimension is the real 6x4 label's, scaled by 0.9 (measured off
+    # the approved 6x4 R519 label) so the 4x2 keeps the same proportions -- vertical name
+    # from the box's left edge to the icon, box ~13% tall with slightly rounded corners
+    # running under the icon, icon ~1.7x the box height, product name left-aligned below.
+    ICON = 159
+    icon_x, icon_y = 910 + DX, 12
+    px0, px1, py0, py1 = 588 + DX, 996 + DX, 68, 162
     vavail = icon_x - px0 - 6
     vsize = 100
     vf = _font("kallisto", vsize)
-    vsize = min(int(vsize * vavail / vf.getlength(vertical_name)), 100)
+    vsize = min(int(vsize * vavail / vf.getlength(vertical_name)), 100, int(44 / 0.78))   # cap height <= ~44px
     vf = _font("kallisto", vsize)
     vbb = vf.getbbox(vertical_name)
-    vy = py0 - 8 - (vbb[3] - vbb[1]) - vbb[1]
+    vy = py0 - 10 - (vbb[3] - vbb[1]) - vbb[1]
     items = [((px0, vy), vertical_name, vf)]
-    pf = _font("bold", 28)
-    if len((product_name or "")) > 24:
-        pf = _font("bold", 26)   # long names wrap to two lines -- keep clear of the bars
-    pn_lines = []
-    cur = ""
-    for wd in (product_name or "").split():
-        t = (cur + " " + wd).strip()
-        if pf.getlength(t) <= 1090 - px0:
-            cur = t
-        else:
-            pn_lines.append(cur); cur = wd
-    pn_lines.append(cur)
-    pn_lines = pn_lines[:2]
-    for i, l in enumerate(pn_lines):
-        items.append(((px0, 134 + i * 30), l, pf))
+    # product name: one line, shrunk to fit under the box (reaches the icon's right edge)
+    pn_avail = (icon_x + ICON) - px0
+    psize = 32
+    pf = _font("bold", psize)
+    while pf.getlength(product_name or "") > pn_avail and psize > 18:
+        psize -= 1
+        pf = _font("bold", psize)
+    pbb = pf.getbbox(product_name or "A")
+    items.append(((px0, 174 - pbb[1]), product_name or "", pf))
     canvas = _apply_text_shadow(canvas, items, W, H)
     draw = ImageDraw.Draw(canvas)
     draw.text(items[0][0], vertical_name, font=vf, fill=COLOR_WHITE)
     for (xy, l, f) in items[1:]:
         draw.text(xy, l, font=f, fill=COLOR_WHITE)
 
-    draw.rounded_rectangle((px0, py0, px1, py1), 27, fill=COLOR_WHITE)
+    draw.rounded_rectangle((px0, py0, px1, py1), 10, fill=COLOR_WHITE)
     code_cx = (px0 + icon_x) // 2
     code_avail = (icon_x - px0) - 30
-    size = 46 if not badge_color else 40
+    size = 92 if not badge_color else 70
     cf = _font("kallisto", size)
     while cf.getlength(product_code) > code_avail and size > 18:
         size -= 1
