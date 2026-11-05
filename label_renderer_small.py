@@ -52,13 +52,12 @@ def render_small_label(
 
     # ---- top: logo | vertical name + badge pill + product name
     logo = _fit_image(CATEGORY_LOGO[category], (0, 0, 410, 186))
-    # The logo and the badge cluster (vertical name / code box / icon) are centred on the
-    # label as one group, with equal left and right margins.
-    CLUSTER_W, GAP = 481, 60
-    margin = (W - (logo.width + GAP + CLUSTER_W)) // 2
-    DX = margin + logo.width + GAP - 588
-    canvas.paste(logo, (margin, 14 + (186 - logo.height) // 2), logo)
-
+    # Justified to the sides like the 6x4: the logo's visible left edge and the icon's right
+    # edge sit the same distance from their label edges.
+    SIDE = 80
+    lbox = logo.getchannel("A").getbbox() or (0, 0, logo.width, logo.height)
+    canvas.paste(logo, (SIDE - lbox[0], 14 + (186 - logo.height) // 2), logo)
+    DX = (W - SIDE) - 1069     # puts the icon's right edge SIDE px from the label's right edge
     # Badge cluster: every dimension is the real 6x4 label's, scaled by 0.9 (measured off
     # the approved 6x4 R519 label) so the 4x2 keeps the same proportions -- vertical name
     # from the box's left edge to the icon, box ~13% tall with slightly rounded corners
