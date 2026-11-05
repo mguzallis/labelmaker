@@ -19,7 +19,7 @@ from layout_config import (
 from label_renderer import _font, _apply_text_shadow, Section, fit_and_draw_box
 
 SMALL_DIMENSION = (4, 2)
-SEE_SDS_LINE = "See the SDS for precautionary statements, first aid, and full storage and disposal details."
+SEE_SDS_LINE = "See the SDS for precautionary statements and first aid."
 
 
 def _first_sentences(text, n=1):
@@ -123,16 +123,19 @@ def render_small_label(
         left_sections.append(Section("SIGNAL WORD", sds["signal_word"].upper(), kind="text", protected=True))
     if hazards:
         left_sections.append(Section("HAZARD STATEMENTS", hazards, kind="bulleted", bullet="", protected=True))
+    # Storage and Waste Disposal are required, so they get the full SDS text -- in the
+    # left box, which has the room (the right box carries the directions).
+    if sds.get("storage"):
+        left_sections.append(Section("STORAGE", sds["storage"], kind="text", protected=True))
+    disposal = re.sub(r"^\s*Product\s+(?=Dispose)", "", sds.get("disposal") or "", flags=re.I).strip()
+    if disposal:
+        left_sections.append(Section("WASTE DISPOSAL", disposal, kind="text", protected=True))
     left_sections.append(Section("", SEE_SDS_LINE, kind="text", body_bold=True, protected=True))
 
     right_sections = [
         Section("DIRECTIONS FOR USE", "FOR INDUSTRIAL USE ONLY", kind="text", protected=True, body_bold=True),
         Section("", tds_bullets_selected, kind="bulleted", protected=True),
     ]
-    sd = " ".join(x for x in (_first_sentences(sds.get("storage"), 1), _first_sentences(sds.get("disposal"), 1)) if x)
-    if sd:
-        right_sections.append(Section("STORAGE AND DISPOSAL", sd, kind="text"))
-
     pics = list(sds.get("pictograms", []))
     pic_size = 70 if len(pics) <= 4 else 58
     has_usa = category in ("Adhesive", "Sealant")
@@ -169,7 +172,7 @@ def render_small_label(
         usa_top = usa_y
     rows_n = (len(pics) + 1) // 2
     block_h = rows_n * pic_size + max(rows_n - 1, 0) * 4
-    y = RB[1] + max(((usa_top - 6) - RB[1] - block_h) // 2, 6)   # vertically centred above the badge
+    y = max(usa_top - 8 - block_h, RB[1] + 6)   # sits just above the flag badge
     for i, code in enumerate(pics):
         cand = [f for f in os.listdir(pdir) if f.startswith(code)]
         if not cand:
