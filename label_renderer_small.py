@@ -54,11 +54,20 @@ def render_small_label(
     logo = _fit_image(CATEGORY_LOGO[category], (20, 14, 430, 200))
     canvas.paste(logo, (20 + (410 - logo.width) // 2, 14 + (186 - logo.height) // 2), logo)
 
-    vf = _font("kallisto", 40)
-    vw = vf.getlength(vertical_name)
-    px0, px1, py0, py1 = 520, 1075, 66, 142
-    items = [((int(785 - vw / 2), 12), vertical_name, vf)]
+    px0, px1, py0, py1 = 520, 1075, 96, 158
+    # Vertical name: left edge on the white box's left edge, stretched to run all
+    # the way to the industry icon (same as the main layout), height-capped.
+    vavail = 1030 - px0 - 6
+    vsize = 100
+    vf = _font("kallisto", vsize)
+    vsize = min(int(vsize * vavail / vf.getlength(vertical_name)), 100)
+    vf = _font("kallisto", vsize)
+    vbb = vf.getbbox(vertical_name)
+    vy = py0 - 8 - (vbb[3] - vbb[1]) - vbb[1]
+    items = [((px0, vy), vertical_name, vf)]
     pf = _font("bold", 30)
+    if len((product_name or "")) > 24:
+        pf = _font("bold", 26)   # long names wrap to two lines -- keep clear of the bars
     pn_lines = []
     cur = ""
     for wd in (product_name or "").split():
@@ -70,7 +79,7 @@ def render_small_label(
     pn_lines.append(cur)
     pn_lines = pn_lines[:2]
     for i, l in enumerate(pn_lines):
-        items.append(((int(785 - pf.getlength(l) / 2), 150 + i * 34), l, pf))
+        items.append(((int(785 - pf.getlength(l) / 2), 164 + i * 28), l, pf))
     canvas = _apply_text_shadow(canvas, items, W, H)
     draw = ImageDraw.Draw(canvas)
     draw.text(items[0][0], vertical_name, font=vf, fill=COLOR_WHITE)
@@ -79,7 +88,7 @@ def render_small_label(
 
     draw.rounded_rectangle((px0, py0, px1, py1), 36, fill=COLOR_WHITE)
     code_avail = (px1 - px0) - 40
-    size = 62 if not badge_color else 54
+    size = 54 if not badge_color else 46
     cf = _font("kallisto", size)
     while cf.getlength(product_code) > code_avail and size > 20:
         size -= 1
@@ -102,13 +111,13 @@ def render_small_label(
     # ---- orange bars
     bar_f = _font("bold", 20)
     for (x0, x1, text) in ((12, 590, sales_description_1), (610, 1188, sales_description_2)):
-        draw.rounded_rectangle((x0, 212, x1, 248), 6, fill=accent)
+        draw.rounded_rectangle((x0, 216, x1, 250), 6, fill=accent)
         t = (text or "").upper()
         s = 20
         f = bar_f
         while f.getlength(t) > (x1 - x0) - 24 and s > 12:
             s -= 1; f = _font("bold", s)
-        draw.text(((x0 + x1) // 2, 230), t, font=f, fill=COLOR_WHITE, anchor="mm")
+        draw.text(((x0 + x1) // 2, 233), t, font=f, fill=COLOR_WHITE, anchor="mm")
 
     # ---- grey boxes
     LB = (12, 258, 590, 520)
