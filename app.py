@@ -21,6 +21,7 @@ import master_data
 from parse_sds import parse_sds
 from parse_tds import extract_product_application_bullets, extract_storage_info
 from label_renderer import render_label, render_compact_label, render_tape_label
+from label_renderer_small import render_small_label, SMALL_DIMENSION
 from product_sizes import PRODUCT_SIZES, get_label_dimensions
 from template_config import (
     CATEGORIES, available_categories_for_product, REQUIRES_SDS,
@@ -222,7 +223,7 @@ def _label_size_matches(row_size, ptype, cat):
     if cat == "Tape":
         return True
     if ptype == "Dual Cartridge":
-        return row_size.endswith("dual cartridge")
+        return row_size.endswith("dual cartridge") or row_size.endswith("dual cartridge (4x2)")
     return row_size == (ptype or "").strip().lower()
 
 
@@ -240,6 +241,10 @@ def _candidate_labels(code, ptype, cat):
     rows = [r for r in master_data.label_rows(code)
             if _label_size_matches(r.get("Size / Container"), ptype, cat)
             and _row_is_box(r) == _want_box()]
+    if ptype == "Dual Cartridge":
+        # 4x2 item labels are stored as "<size> Dual Cartridge (4x2)"; box labels are always 6x4
+        _small = (not _want_box()) and st.session_state.get("dual_item_size") == "4x2"
+        rows = [r for r in rows if ("(4x2)" in (r.get("Size / Container") or "")) == _small]
     return rows
 
 
@@ -266,6 +271,8 @@ def _apply_label_row(row):
     ss["sales_description_2"] = right
     size = (row.get("Size / Container") or "").strip()
     if ss.get("product_type") == "Dual Cartridge":
+        if "(4x2)" in size:
+            ss["dual_item_size"] = "4x2"
         m = re.match(r"^(\d+(?:\.\d+)?\s*ml)\b", size, re.I)
         if m:
             sz = m.group(1).replace(" ", "").lower()
@@ -418,7 +425,8 @@ with left:
         dimension_group = dimension_group_for_product(product_type)
         use_compact_layout = is_compact_layout(dimension_group)
 
-    st.caption(f"Label size: {canvas_size_in[0]}\" x {canvas_size_in[1]}\"")
+    if product_type != "Dual Cartridge":
+        st.caption(f"Label size: {canvas_size_in[0]}\" x {canvas_size_in[1]}\"")
 
     # Dual (two-part) cartridges share one 6x4 label for product and box; the
     # size printed on it varies per product, so it is typed (or loaded from the master).
@@ -485,6 +493,23 @@ with left:
                 else:
                     case_quantity = f"{qty_prefix} {fixed_qty}"
                     st.caption(f"{qty_prefix} {fixed_qty} (fixed per size chart)")
+
+    # Dual cartridge item labels come in two sizes: 6x4 (default) or the small
+    # two-column 4x2. Box labels are always 6x4.
+    use_small_layout = False
+    if not is_tape and product_type == "Dual Cartridge":
+        if case_quantity or st.session_state.get("box_label_radio", "No") == "Yes":
+            st.caption("Label size: 6\" x 4\" (box labels are always 6x4)")
+        else:
+            _item_size = st.radio("Item label size", ["6x4", "4x2"], horizontal=True, key="dual_item_size",
+                                  help="4x2 is the small two-column label: signal word and hazard statements on the left, "
+                                       "directions and a short storage/disposal line on the right (no precautionary statements).")
+            if _item_size == "4x2":
+                use_small_layout = True
+                canvas_size_in = SMALL_DIMENSION
+                dimension_group = "4x2"
+                use_compact_layout = False
+            st.caption(f"Label size: {canvas_size_in[0]}\" x {canvas_size_in[1]}\"")
 
     st.subheader("2. Source Documents")
     needs_sds = REQUIRES_SDS.get(category, True)
@@ -731,6 +756,26 @@ with right:
                         dpi=300,
                         force_exclude_response=force_exclude_response,
                     )
+                elif use_small_layout:
+                    _, dropped_content = render_small_label(
+                        canvas_size_in=canvas_size_in,
+                        background_path=background_path,
+                        vertical_name=vertical_name,
+                        category=category,
+                        sds_data=effective_sds_data,
+                        tds_bullets_selected=selected_bullets,
+                        product_name=product_name,
+                        sales_description_1=sales_description_1,
+                        sales_description_2=sales_description_2,
+                        product_code=product_code,
+                        size_label=size_label_text,
+                        badge_color=badge_color or None,
+                        badge_icon_path=badge_icon_path,
+                        internal_label_number=internal_label_number or None,
+                        lot_number=lot_number,
+                        output_path=output_path,
+                        dpi=300,
+                    )
                 elif use_compact_layout:
                     _, dropped_content = render_compact_label(
                         canvas_size_in=canvas_size_in,
@@ -839,6 +884,8 @@ with right:
                 else:
                     _bar_l, _bar_r = (sales_description_1 or "").strip(), (sales_description_2 or "").strip()
                 _size_container = (f"{dual_size_value} Dual Cartridge" if dual_size_value else product_type)
+                if use_small_layout:
+                    _size_container += " (4x2)"
                 _ptype, _sds_no = "", ""
                 try:
                     _t = next((r for r in master_data._rows("tds") if (r.get("Product Code") or "").strip() == product_code), {})

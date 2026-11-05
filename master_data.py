@@ -149,7 +149,12 @@ def _statements(text, rx):
         if not ms:
             line = _TRAIL_HEADING.sub("", line).strip()
             if _real_text(line):
-                items.append({"code": "", "text": line})
+                # Older SDS print several plain hazard sentences on one line
+                # ("Causes serious eye irritation May cause respiratory irritation.")
+                parts = re.split(r"(?<=[a-z.])\s+(?=(?:May|Causes|Harmful|Highly|Fatal|Toxic|Suspected|Flammable|Extremely|Contains)\b)", line)
+                for part in parts:
+                    if _real_text(part):
+                        items.append({"code": "", "text": part.strip()})
             continue
         lead = _TRAIL_HEADING.sub("", line[:ms[0].start()]).strip()
         if _real_text(lead):
