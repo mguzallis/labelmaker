@@ -136,6 +136,7 @@ def _save_upload_to_tmp(uploaded_file):
 
 
 st.set_page_config(page_title="Forza Label Generator", layout="wide")
+APP_BUILD = "2026-11-05 4x2 layout v6"   # shown at the bottom of the page so a stale deploy is easy to spot
 
 
 def _load_brand_fonts_css():
@@ -916,3 +917,5 @@ with right:
                 st.error(f"Could not save to the master: {e}")
     else:
         st.info("Fill in the form and click **Generate Label** to see a preview here.")
+
+st.caption(f"Label Generator build: {APP_BUILD}")
