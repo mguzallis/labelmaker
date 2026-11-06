@@ -1733,6 +1733,13 @@ def render_label(
             left_sections = _build_left_sections(non_response, add_note=bool(response))
         else:
             left_sections = _build_left_sections(space_safe_precautions, add_note=False)
+        # Tape 6x4: Storage and Waste Disposal sit in the left column (the right box
+        # carries only the directions), which spaces the two columns out better.
+        if category == "Tape":
+            left_sections = left_sections + [
+                Section("STORAGE", sds_data.get("storage") or "N/A", kind="text", protected=True),
+                Section("WASTE DISPOSAL", sds_data.get("disposal") or "N/A", kind="text", protected=True),
+            ]
     elif category == "Tape":
         body_font = _font("regular", body_font_size)
         draw.text((blx0 + pad, bly0 + pad), "No SDS required for Tape products.",
@@ -1770,7 +1777,7 @@ def render_label(
         Section("DIRECTIONS FOR USE", "FOR INDUSTRIAL USE ONLY", kind="text", protected=True, body_bold=True),
         Section("", tds_bullets_selected, kind="bulleted", protected=True),
     ]
-    if sds_data:
+    if sds_data and category != "Tape":
         remaining_sections.append(Section("STORAGE", sds_data.get("storage") or "N/A", kind="text", protected=True))
         remaining_sections.append(Section("WASTE DISPOSAL", sds_data.get("disposal") or "N/A", kind="text", protected=True))
 
