@@ -2072,9 +2072,33 @@ def render_tape_label(
     TAPE_BADGE_ZONE_BY_VERTICAL = {
         "Transportation": (380.8, 24.4, 504.7, 51.9),
         "Marine": (379.8, 30.4, 501.5, 64.2),
-        "Insulation": (379.7, 28.8, 475.2, 62.4),
+        "Insulation": (379.5, 28.9, 503.7, 63.3),
+        "Industrial": (396.0, 26.2, 495.2, 53.7),
+        "Construction": (381.2, 21.2, 497.3, 53.3),
+    }
+    # Left edge of each vertical's circular icon (pt) -- measured from the real blanks. The
+    # white box runs under the icon, so the product code is centred in the visible part to
+    # the LEFT of it (matches the real filled labels), not across the whole box.
+    TAPE_ICON_LEFT_BY_VERTICAL = {
+        "Transportation": 472.1, "Marine": 470.6, "Insulation": 473.4,
+        "Industrial": 470.7, "Construction": 470.4,
     }
     badge_zone = TAPE_BADGE_ZONE_BY_VERTICAL.get(vertical_name, TAPE_BADGE_ZONE_BY_VERTICAL["Transportation"])
+
+    # Per-vertical spacing (pt) measured off the real filled reference labels; anything not
+    # listed uses the Transportation geometry. footer_logo/addr: drawn when the baked blank
+    # lacks the footer (Industrial, Insulation, Construction blanks are stripped of it).
+    TAPE_GEOMETRY_BY_VERTICAL = {
+        "Industrial": {"boxes": (96.6, 247.4), "footer_y": 252.5,
+                       "footer_logo": (385.1, 254.5, 463.5, 276.0), "addr": (469.8, 252.8, 4.4)},
+        "Insulation": {"bars": (99.4, 114.1), "boxes": (121.6, 253.3), "footer_y": 258.4,
+                       "footer_logo": (405.5, 256.9, 470.3, 276.0), "addr": (480.7, 255.5, 3.9)},
+        "Construction": {"footer_logo": (385.1, 255.5, 463.5, 277.0), "addr": (469.8, 253.8, 4.4)},
+    }
+    geom = TAPE_GEOMETRY_BY_VERTICAL.get(vertical_name, {})
+    bar_y0, bar_y1 = geom.get("bars", (74.3, 89.0))
+    box_y0, box_y1 = geom.get("boxes", (94.1, 244.9))
+    footer_y_pt = geom.get("footer_y", 250.0)
 
     w_in, h_in = canvas_size_in
     supersample = 2
@@ -2116,10 +2140,10 @@ def render_tape_label(
     # icon only) strip these out just like every other vertical's blanks
     # did, so they're not pre-baked here yet. Positions measured directly
     # from the real AP848 (Transportation) reference.
-    for box in [(47.9, 94.1, 206.3, 244.9), (213.3, 94.1, 371.7, 244.9), (379.4, 94.1, 537.9, 244.9)]:
+    for box in [(47.9, box_y0, 206.3, box_y1), (213.3, box_y0, 371.7, box_y1), (379.4, box_y0, 537.9, box_y1)]:
         x0, y0, x1, y1 = [px(v) for v in box]
         draw.rounded_rectangle([x0, y0, x1, y1], radius=int(0.01 * W), fill=COLOR_GREY_BOX)
-    for box in [(47.4, 74.3, 371.5, 89.0), (379.5, 74.3, 538.0, 89.0)]:
+    for box in [(47.4, bar_y0, 371.5, bar_y1), (379.5, bar_y0, 538.0, bar_y1)]:
         x0, y0, x1, y1 = [px(v) for v in box]
         draw.rounded_rectangle([x0, y0, x1, y1], radius=int(0.006 * W), fill=TAPE_BAR_COLOR)
 
@@ -2151,13 +2175,14 @@ def render_tape_label(
     box_h = by1 - by0
     code_font_size = int(box_h * 0.85)
     code_font = _font("kallisto", code_font_size)
-    avail_code_w = (bx1 - bx0) * 0.92
+    code_region_x1 = min(bx1, px(TAPE_ICON_LEFT_BY_VERTICAL.get(vertical_name, 471.0)))
+    avail_code_w = (code_region_x1 - bx0) * 0.97
     while code_font.getlength(product_code) > avail_code_w and code_font_size > 10:
         code_font_size -= 1
         code_font = _font("kallisto", code_font_size)
     code_bbox = code_font.getbbox(product_code)
     code_w = code_font.getlength(product_code)
-    code_x = bx0 + ((bx1 - bx0) - code_w) / 2
+    code_x = bx0 + ((code_region_x1 - bx0) - code_w) / 2
     code_y = by0 + (box_h - (code_bbox[3] - code_bbox[1])) / 2 - code_bbox[1]
     draw.text((code_x, code_y), product_code, font=code_font, fill=code_text_color)
 
@@ -2176,7 +2201,7 @@ def render_tape_label(
     # (confirmed Marine's real box is taller than Transportation's),
     # which could push product_name down into the bar for any vertical
     # with a taller box than the one this ratio was tuned against.
-    available_pn_h = px(74.3) - (by1 + px(1.0))
+    available_pn_h = px(bar_y0) - (by1 + px(1.0))
     pn_font_size = min(pn_font_size, int(box_h * 0.5), int(available_pn_h * 0.75))
     pn_font = _font("kallisto", pn_font_size)
     while pn_font.getlength(product_name) > pn_target_w and pn_font_size > 10:
@@ -2215,7 +2240,7 @@ def render_tape_label(
     # --- Bar text ---
     bar_font_size = int(0.0324 * H)
     bar_font = _font("bold", bar_font_size)
-    for text, box in [(sales_description_1.upper(), (47.4, 74.3, 371.5, 89.0)), (sales_description_2.upper(), (379.5, 74.3, 538.0, 89.0))]:
+    for text, box in [(sales_description_1.upper(), (47.4, bar_y0, 371.5, bar_y1)), (sales_description_2.upper(), (379.5, bar_y0, 538.0, bar_y1))]:
         x0, y0, x1, y1 = [px(v) for v in box]
         f = bar_font
         fs = bar_font_size
@@ -2272,9 +2297,9 @@ def render_tape_label(
         right_sections.append(Section("", "See technical data sheet for more information.", kind="text", protected=True))
 
     box_bounds = {
-        "left": tuple(px(v) for v in (47.9, 94.1, 206.3, 244.9)),
-        "middle": tuple(px(v) for v in (213.3, 94.1, 371.7, 244.9)),
-        "right": tuple(px(v) for v in (379.4, 94.1, 537.9, 244.9)),
+        "left": tuple(px(v) for v in (47.9, box_y0, 206.3, box_y1)),
+        "middle": tuple(px(v) for v in (213.3, box_y0, 371.7, box_y1)),
+        "right": tuple(px(v) for v in (379.4, box_y0, 537.9, box_y1)),
     }
     max_w = {
         "left": box_bounds["left"][2] - box_bounds["left"][0] - 2 * pad,
@@ -2329,12 +2354,26 @@ def render_tape_label(
     # for tape, unlike Cartridge/Sausage) ---
     footer_font_size = int(0.018 * H)
     footer_font = _font("kallisto", footer_font_size)
-    fy0 = px(250.0)
+    fy0 = px(footer_y_pt)
     draw.text((px(52.9), fy0), (size_label if str(size_label).upper().startswith("SIZE:") else f"SIZE: {size_label}"), font=footer_font, fill=COLOR_WHITE)
     draw.text((px(52.9), fy0 + footer_font_size * 1.15), f"Case Quantity: {case_quantity}", font=footer_font, fill=COLOR_WHITE)
     draw.text((px(217.1), fy0), lot_number, font=footer_font, fill=COLOR_WHITE)
     label_display = internal_label_number if internal_label_number else product_code
     draw.text((px(333.6), fy0), label_display, font=footer_font, fill=COLOR_WHITE)
+
+    if using_baked_background and "footer_logo" in geom:
+        fl_x0, fl_y0, fl_x1, fl_y1 = [px(v) for v in geom["footer_logo"]]
+        flogo = Image.open("assets/footer_logo.png").convert("RGBA")
+        r = min((fl_x1 - fl_x0) / flogo.width, (fl_y1 - fl_y0) / flogo.height)
+        flogo = flogo.resize((int(flogo.width * r), int(flogo.height * r)), Image.LANCZOS)
+        canvas.paste(flogo, (int(fl_x0), int(fl_y0)), flogo)
+        draw = ImageDraw.Draw(canvas)
+        ax, ay, asz = geom["addr"]
+        f_b = _font("cotext_bold", max(int(px(asz)), 6))
+        f_l = _font("cotext_light", max(int(px(asz)), 6))
+        for i, (txt, b) in enumerate((("Forza Inc.", True), ("3211 Nebraska Ave, Suite 300,", False),
+                                       ("Council Bluffs, IA 51501", False), ("www.forzabuilt.com", True))):
+            draw.text((px(ax), px(ay) + i * px(asz * 1.3)), txt, font=(f_b if b else f_l), fill=COLOR_WHITE)
 
     final_w, final_h = round(w_in * dpi), round(h_in * dpi)
     canvas = canvas.resize((final_w, final_h), Image.LANCZOS)

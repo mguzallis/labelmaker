@@ -47,6 +47,9 @@ VERTICAL_BACKGROUNDS = {
 TAPE_BACKGROUNDS = {
     "Transportation": "baked_backgrounds_wip/tape_transportation_8x4_v1_current.png",
     "Marine": "baked_backgrounds_wip/tape_marine_8x4_v1_current.png",
+    "Industrial": "baked_backgrounds_wip/tape_industrial_8x4_v1_current.png",
+    "Insulation": "baked_backgrounds_wip/tape_insulation_8x4_v1_current.png",
+    "Construction": "baked_backgrounds_wip/tape_construction_8x4_v1_current.png",
 }
 
 # All seven vertical icons extracted directly from the Brand Standards
@@ -136,7 +139,7 @@ def _save_upload_to_tmp(uploaded_file):
 
 
 st.set_page_config(page_title="Forza Label Generator", layout="wide")
-APP_BUILD = "2026-11-05 4x2 layout v6"   # shown at the bottom of the page so a stale deploy is easy to spot
+APP_BUILD = "2026-11-06 tape labels all verticals v7"   # shown at the bottom of the page so a stale deploy is easy to spot
 
 
 def _load_brand_fonts_css():
