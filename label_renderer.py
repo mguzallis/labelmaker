@@ -587,7 +587,7 @@ def render_compact_label(
         fill_header=COLOR_ORANGE,
     )
 
-    if category != "Tape" and sds_data:
+    if sds_data:
         max_w_left = (lx1 - lx0) - 2 * pad
         storage_text = sds_data.get("storage") or "N/A"
         disposal_text = sds_data.get("disposal") or "N/A"
@@ -628,13 +628,13 @@ def render_compact_label(
     # --- RIGHT BOX: Signal Word / Hazard / Precautionary (top), then
     # Contains + pictograms anchored at a FIXED position at the bottom,
     # matching the real label exactly rather than flowing dynamically. ---
-    pictogram_codes = sds_data.get("pictograms", []) if (category != "Tape" and sds_data) else []
+    pictogram_codes = sds_data.get("pictograms", []) if (sds_data) else []
     n_pics = len(pictogram_codes)
 
     contains_x0, contains_y0, _, _ = compact_zone_px("contains_header", W, H, dimension_group=dimension_group)
     top_section_bottom = contains_y0 - int(0.01 * H)
 
-    if category != "Tape" and sds_data:
+    if sds_data:
         signal_word = (sds_data.get("signal_word") or "N/A").upper()
         hazard_texts = [h["text"] for h in sds_data.get("hazard_statements", [])]
         space_safe_precautions = strip_redundant_precautions(sds_data.get("precautionary_statements", []))
@@ -688,7 +688,7 @@ def render_compact_label(
     pic_col_w = int(0.223 * (rx1 - rx0)) if n_pics else 0
     contains_text_w = (rx1 - rx0) - 2 * pad - pic_col_w - pic_band_pad
 
-    ingredients = sds_data.get("ingredients") or [] if (category != "Tape" and sds_data) else []
+    ingredients = sds_data.get("ingredients") or [] if (sds_data) else []
     if ingredients:
         available_h_contains = (ry1 - pad) - contains_y0
 
@@ -954,6 +954,7 @@ def render_label(
     badge_icon_path=None,     # circular vertical-specific icon (e.g. hard hat, boat), overlaps the product-code pill's right edge
     internal_label_number=None,  # e.g. "APXXXX" -- Forza's internal label ID, shown in the FOOTER only (distinct from the customer-facing product_code shown in the badge box)
     case_quantity=None,       # optional -- only relevant for Box Labels on Cartridge/Sausage products; shown below the size in the footer when set
+    tds_storage_info=None,    # Tape only: storage text from the TDS (tape has no SDS)
     lot_number="LOT#",
     force_exclude_response=False,  # proactively exclude P3xx (Response)
                           # precautionary statements for larger/more
@@ -967,6 +968,21 @@ def render_label(
     pictogram_dir="pictograms",
     output_path=None,
 ):
+    if category == "Tape" and sds_data is None:
+        # Tape has no SDS: use the same non-hazardous content as the 8x4 tape label.
+        sds_data = {
+            "signal_word": "NON-HAZARDOUS",
+            "hazard_statements": [{"text": "NON-HAZARDOUS"}],
+            "precautionary_statements": [{"text": "NON-HAZARDOUS", "code": "P000"}],
+            "storage": tds_storage_info or "Keep it in the original container.",
+            "disposal": "Dispose of waste materials in accordance with applicable local and national laws and regulations.",
+            "ingredients": [], "pictograms": [],
+        }
+        if size_label and not str(size_label).upper().startswith("SIZE:"):
+            size_label = f"SIZE: {size_label}"
+        if case_quantity and not str(case_quantity).lower().startswith("case"):
+            case_quantity = f"Case Quantity: {case_quantity}"
+
     w_in, h_in = canvas_size_in
     # Supersample at 2x internally, then downscale with high-quality
     # resampling at the very end -- PIL's shape drawing (rounded_rectangle
@@ -1643,7 +1659,7 @@ def render_label(
     # the column reserved for them must scale with that count -- reserving
     # width for only one icon-width caused a 2-icon row to spill past the
     # reserved boundary and overlap the text column.
-    pictogram_codes = sds_data.get("pictograms", []) if (category != "Tape" and sds_data) else []
+    pictogram_codes = sds_data.get("pictograms", []) if (sds_data) else []
     n_pics = len(pictogram_codes)
     pic_size_by_height = pic_y1 - pic_y0
     pic_size = pic_size_by_height  # ALWAYS the same size as the 2-icon case -- never shrunk
@@ -1686,7 +1702,7 @@ def render_label(
 
     # LEFT BOX: Signal Word / Hazard Statements / Precautionary Statements
     # Skipped entirely for Tape -- no SDS exists for tape products.
-    if category != "Tape" and sds_data:
+    if sds_data:
         # Signal word must always display in ALL CAPS per GHS convention,
         # regardless of how the source SDS formatted it (some use "WARNING",
         # others "Warning") -- this is a presentation rule applied at
@@ -1754,13 +1770,13 @@ def render_label(
         Section("DIRECTIONS FOR USE", "FOR INDUSTRIAL USE ONLY", kind="text", protected=True, body_bold=True),
         Section("", tds_bullets_selected, kind="bulleted", protected=True),
     ]
-    if category != "Tape" and sds_data:
+    if sds_data:
         remaining_sections.append(Section("STORAGE", sds_data.get("storage") or "N/A", kind="text", protected=True))
         remaining_sections.append(Section("WASTE DISPOSAL", sds_data.get("disposal") or "N/A", kind="text", protected=True))
 
     dropped_content = {"left": [], "right": []}
 
-    if category != "Tape" and sds_data:
+    if sds_data:
         # Two-pass sync: measure each box's own required scale first (no
         # drawing), then draw both at whichever is smaller, so the two
         # boxes end up visually consistent instead of each independently

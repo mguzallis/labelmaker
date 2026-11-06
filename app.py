@@ -139,7 +139,7 @@ def _save_upload_to_tmp(uploaded_file):
 
 
 st.set_page_config(page_title="Forza Label Generator", layout="wide")
-APP_BUILD = "2026-11-06 tape labels all verticals v7"   # shown at the bottom of the page so a stale deploy is easy to spot
+APP_BUILD = "2026-11-06 tape 6x4 option v8"   # shown at the bottom of the page so a stale deploy is easy to spot
 
 
 def _load_brand_fonts_css():
@@ -415,7 +415,10 @@ with left:
         # size). The tape's actual dimensions are entered separately
         # below as free text, since they vary per product and don't
         # match the Cartridge/Sausage/Pail-style dropdown at all.
-        canvas_size_in = (8, 4)
+        # Standard tape label is 8x4; 6x4 is offered for one-off labels (uses the
+        # standard two-column 6x4 layout).
+        _tape_sz = st.radio("Label size", ["8x4 (standard)", "6x4 (one-off)"], horizontal=True, key="tape_label_size")
+        canvas_size_in = (6, 4) if _tape_sz.startswith("6x4") else (8, 4)
         dimension_group = None
         use_compact_layout = False
         tape_size_label = st.text_input("Tape Size", placeholder="e.g. 3/4in x 108ft", key="tape_size_text")
@@ -739,7 +742,30 @@ with right:
                             # so this is a graceful degrade, not an error.
                             baked_background_path = None
 
-                if is_tape:
+                if is_tape and canvas_size_in == (6, 4):
+                    _, dropped_content = render_label(
+                        canvas_size_in=canvas_size_in,
+                        background_path=background_path,
+                        baked_background_path=None,
+                        dimension_group="6x4",
+                        vertical_name=vertical_name,
+                        category="Tape",
+                        sds_data=None,
+                        tds_bullets_selected=selected_bullets,
+                        product_name=product_name,
+                        sales_description_1=sales_description_1,
+                        sales_description_2=sales_description_2,
+                        product_code=product_code,
+                        size_label=tape_size_label,
+                        badge_icon_path=badge_icon_path,
+                        internal_label_number=internal_label_number or None,
+                        case_quantity=case_quantity or None,
+                        lot_number=lot_number,
+                        tds_storage_info=st.session_state.tds_storage_info,
+                        output_path=output_path,
+                        dpi=300,
+                    )
+                elif is_tape:
                     _, dropped_content = render_tape_label(
                         canvas_size_in=canvas_size_in,
                         background_path=background_path,
