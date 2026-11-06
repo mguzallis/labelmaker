@@ -57,7 +57,7 @@ CATEGORY_ACCENT_COLOR = {
 CATEGORY_LOGO = {
     "Adhesive": "logos/eagle_bond_lockup.png",
     "Sealant": "logos/eagle_seal_lockup.png",
-    "Tape": "logos/eagle_tape_lockup.png",
+    "Tape": "logos/eagle_tape_lockup_full.png",
 }
 
 # All zones as (x0, y0, x1, y1) fractions of full canvas width/height
