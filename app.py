@@ -139,7 +139,7 @@ def _save_upload_to_tmp(uploaded_file):
 
 
 st.set_page_config(page_title="Forza Label Generator", layout="wide")
-APP_BUILD = "2026-11-06 tape name spacing v11"   # shown at the bottom of the page so a stale deploy is easy to spot
+APP_BUILD = "2026-11-06 tape name clears badge v12"   # shown at the bottom of the page so a stale deploy is easy to spot
 
 
 def _load_brand_fonts_css():

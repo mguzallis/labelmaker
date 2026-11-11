@@ -2213,7 +2213,8 @@ def render_tape_label(
     # behavior as the other layouts, for consistency.
     pn_x0 = bx0
     pn_y0 = by1 + px(1.0)
-    pn_target_w = (bx1 - bx0)
+    # Stop short of the round industry badge, whose lower edge hangs below the white box.
+    pn_target_w = (min(bx1, px(TAPE_ICON_LEFT_BY_VERTICAL.get(vertical_name, 471.0)) - px(2.0)) - bx0)
     probe_size = 100
     probe_font = _font("kallisto", probe_size)
     probe_w = probe_font.getlength(product_name)
