@@ -2102,6 +2102,8 @@ def render_tape_label(
     # Left edge of each vertical's circular icon (pt) -- measured from the real blanks. The
     # white box runs under the icon, so the product code is centred in the visible part to
     # the LEFT of it (matches the real filled labels), not across the whole box.
+    # Lower edge (pt) of the round industry badge, from the real filled labels.
+    TAPE_ICON_BOTTOM_BY_VERTICAL = {"Transportation": 72.0, "Marine": 73.5, "Insulation": 70.5, "Industrial": 58.5, "Construction": 66.5}
     TAPE_ICON_LEFT_BY_VERTICAL = {
         "Transportation": 472.1, "Marine": 470.6, "Insulation": 473.4,
         "Industrial": 470.7, "Construction": 470.4,
@@ -2199,7 +2201,9 @@ def render_tape_label(
     code_font_size = int(box_h * 0.85)
     code_font = _font("kallisto", code_font_size)
     code_region_x1 = min(bx1, px(TAPE_ICON_LEFT_BY_VERTICAL.get(vertical_name, 471.0)))
-    avail_code_w = (code_region_x1 - bx0) * 0.97
+    # Leave an even margin on both sides so the code reads as centered in the visible white
+    # box (the box continues behind the round badge, so a full-width code looks left-heavy).
+    avail_code_w = (code_region_x1 - bx0) * 0.86
     while code_font.getlength(product_code) > avail_code_w and code_font_size > 10:
         code_font_size -= 1
         code_font = _font("kallisto", code_font_size)
@@ -2209,71 +2213,65 @@ def render_tape_label(
     code_y = by0 + (box_h - (code_bbox[3] - code_bbox[1])) / 2 - code_bbox[1]
     draw.text((code_x, code_y), product_code, font=code_font, fill=code_text_color)
 
-    # Product name below the badge -- same 2-line-wrap-at-5+-words
-    # behavior as the other layouts, for consistency.
+    # Product name below the badge. The round industry badge hangs below the white box, so
+    # two placements are tried and the one that lets the name be larger wins:
+    #   A) tight under the box, stopping short of the badge
+    #   B) dropped to just below the badge's lower edge, free to use the full box width
+    # Two-line names use a fixed baseline pitch so the lines can't collide.
     pn_x0 = bx0
-    pn_y0 = by1 + px(1.0)
-    # Stop short of the round industry badge, whose lower edge hangs below the white box.
-    pn_target_w = (min(bx1, px(TAPE_ICON_LEFT_BY_VERTICAL.get(vertical_name, 471.0)) - px(2.0)) - bx0)
-    probe_size = 100
-    probe_font = _font("kallisto", probe_size)
-    probe_w = probe_font.getlength(product_name)
-    pn_font_size = max(int(probe_size * pn_target_w / probe_w), 10)
-    # Cap by ACTUAL available space (gap to the bar below, which sits at
-    # a fixed y regardless of this vertical's own badge box height) --
-    # a fixed box_h ratio isn't safe here since box_h varies per vertical
-    # (confirmed Marine's real box is taller than Transportation's),
-    # which could push product_name down into the bar for any vertical
-    # with a taller box than the one this ratio was tuned against.
-    available_pn_h = px(bar_y0) - (by1 + px(1.0))
-    pn_font_size = min(pn_font_size, int(box_h * 0.5), int(available_pn_h * 0.75))
-    pn_font = _font("kallisto", pn_font_size)
-    while pn_font.getlength(product_name) > pn_target_w and pn_font_size > 10:
-        pn_font_size -= 1
-        pn_font = _font("kallisto", pn_font_size)
+    icon_left_px = px(TAPE_ICON_LEFT_BY_VERTICAL.get(vertical_name, 471.0))
+    icon_bottom_px = px(TAPE_ICON_BOTTOM_BY_VERTICAL.get(vertical_name, 72.0))
     words = product_name.split()
-    if len(words) >= 5 or len(product_name) >= 40:
-        best_split, best_max_w = None, None
-        for i in range(1, len(words)):
-            l1, l2 = " ".join(words[:i]), " ".join(words[i:])
-            w = max(probe_font.getlength(l1), probe_font.getlength(l2))
-            if best_max_w is None or w < best_max_w:
-                best_max_w, best_split = w, (l1, l2)
-        l1, l2 = best_split
-        probe_w_2 = max(probe_font.getlength(l1), probe_font.getlength(l2))
-        pn_size_2 = max(int(probe_size * pn_target_w / probe_w_2), 10)
-        pn_size_2 = min(pn_size_2, int(box_h * 0.32), int(available_pn_h * 0.75))
-        pn_font_2 = _font("kallisto", pn_size_2)
-        while (pn_font_2.getlength(l1) > pn_target_w or pn_font_2.getlength(l2) > pn_target_w) and pn_size_2 > 10:
-            pn_size_2 -= 1
-            pn_font_2 = _font("kallisto", pn_size_2)
-        # Fixed baseline pitch (not per-line glyph bounds, which let lines with different
-        # ascenders/descenders collide), and shrink until BOTH lines fit above the bar.
-        def _two_line_metrics(font):
-            cap = font.getbbox("H")[3] - font.getbbox("H")[1]
-            desc = int(cap * 0.28)
-            pitch = int(cap * 1.32)
-            return cap, desc, pitch
-        while pn_size_2 > 10:
-            cap_, desc_, pitch_ = _two_line_metrics(pn_font_2)
-            if cap_ + pitch_ + desc_ <= available_pn_h:
-                break
-            pn_size_2 -= 1
-            pn_font_2 = _font("kallisto", pn_size_2)
-        cap_, desc_, pitch_ = _two_line_metrics(pn_font_2)
-        asc_ = pn_font_2.getmetrics()[0]
+    want_two = len(words) >= 5 or len(product_name) >= 40
+
+    def _fit_name(y0, target_w, avail_h):
+        if want_two and len(words) > 1:
+            best, best_w = None, None
+            for i in range(1, len(words)):
+                l1, l2 = " ".join(words[:i]), " ".join(words[i:])
+                pf = _font("kallisto", 100)
+                w = max(pf.getlength(l1), pf.getlength(l2))
+                if best_w is None or w < best_w:
+                    best_w, best = w, (l1, l2)
+            size = max(int(100 * target_w / best_w), 10)
+            size = min(size, int(box_h * 0.32))
+            while size > 10:
+                f = _font("kallisto", size)
+                cap = f.getbbox("H")[3] - f.getbbox("H")[1]
+                fits_w = max(f.getlength(best[0]), f.getlength(best[1])) <= target_w
+                fits_h = cap + int(cap * 1.32) + int(cap * 0.28) <= avail_h
+                if fits_w and fits_h:
+                    break
+                size -= 1
+            return size, best, y0
+        size = max(int(100 * target_w / _font("kallisto", 100).getlength(product_name)), 10)
+        size = min(size, int(box_h * 0.5), int(avail_h * 0.75))
+        while size > 10 and _font("kallisto", size).getlength(product_name) > target_w:
+            size -= 1
+        return size, (product_name,), y0
+
+    yA = by1 + px(1.0)
+    wA = min(bx1, icon_left_px - px(2.0)) - bx0
+    hA = px(bar_y0) - yA
+    yB = max(yA, icon_bottom_px + px(0.5))
+    wB = bx1 - bx0
+    hB = px(bar_y0) - yB - px(0.5)
+    cands = [_fit_name(yA, wA, hA)]
+    if hB > px(6):
+        cands.append(_fit_name(yB, wB, hB))
+    pn_size, lines, pn_y0 = max(cands, key=lambda c: c[0])
+    pn_font = _font("kallisto", pn_size)
+    if len(lines) == 2:
+        cap_ = pn_font.getbbox("H")[3] - pn_font.getbbox("H")[1]
+        asc_ = pn_font.getmetrics()[0]
         base1 = pn_y0 + cap_
-        y1_ = base1 - asc_
-        y2_ = base1 + pitch_ - asc_
-        canvas = _apply_text_shadow(canvas, [((pn_x0, y1_), l1, pn_font_2), ((pn_x0, y2_), l2, pn_font_2)], W, H)
-        draw = ImageDraw.Draw(canvas)
-        draw.text((pn_x0, y1_), l1, font=pn_font_2, fill=COLOR_WHITE)
-        draw.text((pn_x0, y2_), l2, font=pn_font_2, fill=COLOR_WHITE)
+        pos = [(pn_x0, base1 - asc_), (pn_x0, base1 + int(cap_ * 1.32) - asc_)]
     else:
-        pn_bbox = pn_font.getbbox(product_name)
-        canvas = _apply_text_shadow(canvas, [((pn_x0, pn_y0 - pn_bbox[1]), product_name, pn_font)], W, H)
-        draw = ImageDraw.Draw(canvas)
-        draw.text((pn_x0, pn_y0 - pn_bbox[1]), product_name, font=pn_font, fill=COLOR_WHITE)
+        pos = [(pn_x0, pn_y0 - pn_font.getbbox(lines[0])[1])]
+    canvas = _apply_text_shadow(canvas, [(xy, t, pn_font) for xy, t in zip(pos, lines)], W, H)
+    draw = ImageDraw.Draw(canvas)
+    for xy, t in zip(pos, lines):
+        draw.text(xy, t, font=pn_font, fill=COLOR_WHITE)
 
     # --- Bar text ---
     bar_font_size = int(0.0324 * H)
