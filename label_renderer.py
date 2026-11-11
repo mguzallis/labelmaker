@@ -1,3 +1,4 @@
+import itertools
 """
 Label renderer.
 
@@ -2222,33 +2223,36 @@ def render_tape_label(
     icon_left_px = px(TAPE_ICON_LEFT_BY_VERTICAL.get(vertical_name, 471.0))
     icon_bottom_px = px(TAPE_ICON_BOTTOM_BY_VERTICAL.get(vertical_name, 72.0))
     words = product_name.split()
-    want_two = len(words) >= 5 or len(product_name) >= 40
+    _probe = _font("kallisto", 100)
+    PN_CAP_RATIO = {1: 0.5, 2: 0.32, 3: 0.24}   # max size as a share of the code box height
+    PN_MIN = 8
 
-    def _fit_name(y0, target_w, avail_h):
-        if want_two and len(words) > 1:
-            best, best_w = None, None
-            for i in range(1, len(words)):
-                l1, l2 = " ".join(words[:i]), " ".join(words[i:])
-                pf = _font("kallisto", 100)
-                w = max(pf.getlength(l1), pf.getlength(l2))
-                if best_w is None or w < best_w:
-                    best_w, best = w, (l1, l2)
-            size = max(int(100 * target_w / best_w), 10)
-            size = min(size, int(box_h * 0.32))
-            while size > 10:
-                f = _font("kallisto", size)
-                cap = f.getbbox("H")[3] - f.getbbox("H")[1]
-                fits_w = max(f.getlength(best[0]), f.getlength(best[1])) <= target_w
-                fits_h = cap + int(cap * 1.32) + int(cap * 0.28) <= avail_h
-                if fits_w and fits_h:
-                    break
-                size -= 1
-            return size, best, y0
-        size = max(int(100 * target_w / _font("kallisto", 100).getlength(product_name)), 10)
-        size = min(size, int(box_h * 0.5), int(avail_h * 0.75))
-        while size > 10 and _font("kallisto", size).getlength(product_name) > target_w:
+    def _splits(n):
+        """Best word split into n lines (minimises the widest line)."""
+        if n == 1:
+            return (product_name,)
+        best, best_w = None, None
+        for cuts in itertools.combinations(range(1, len(words)), n - 1):
+            idx = (0,) + cuts + (len(words),)
+            ls = tuple(" ".join(words[idx[i]:idx[i + 1]]) for i in range(n))
+            w = max(_probe.getlength(l) for l in ls)
+            if best_w is None or w < best_w:
+                best_w, best = w, ls
+        return best
+
+    def _fit_name(y0, target_w, avail_h, n):
+        if n > len(words) or avail_h <= 0 or target_w <= 0:
+            return None
+        ls = _splits(n)
+        size = min(int(100 * target_w / max(_probe.getlength(l) for l in ls)), int(box_h * PN_CAP_RATIO[n]))
+        while size >= PN_MIN:
+            f = _font("kallisto", size)
+            cap = f.getbbox("H")[3] - f.getbbox("H")[1]
+            need = cap + (n - 1) * int(cap * 1.32) + int(cap * 0.28)
+            if need <= avail_h and max(f.getlength(l) for l in ls) <= target_w:
+                return (size, ls, y0)
             size -= 1
-        return size, (product_name,), y0
+        return None
 
     yA = by1 + px(1.0)
     wA = min(bx1, icon_left_px - px(2.0)) - bx0
@@ -2256,16 +2260,24 @@ def render_tape_label(
     yB = max(yA, icon_bottom_px + px(0.5))
     wB = bx1 - bx0
     hB = px(bar_y0) - yB - px(0.5)
-    cands = [_fit_name(yA, wA, hA)]
-    if hB > px(6):
-        cands.append(_fit_name(yB, wB, hB))
-    pn_size, lines, pn_y0 = max(cands, key=lambda c: c[0])
+    cands = []
+    for n in (1, 2, 3):
+        for (yy, ww, hh) in ((yA, wA, hA), (yB, wB, hB)):
+            c = _fit_name(yy, ww, hh, n)
+            if c:
+                cands.append((c, n))
+    if not cands:   # nothing fits at the minimum size: shrink to the smallest legible one-liner
+        f = _font("kallisto", PN_MIN)
+        cands = [((PN_MIN, (product_name,), yA), 1)]
+    best_size = max(c[0][0] for c in cands)
+    # Prefer fewer lines unless more lines buys a clearly larger name.
+    pn_size, lines, pn_y0 = min((c for c in cands if c[0][0] >= best_size * 0.9), key=lambda c: (c[1], -c[0][0]))[0]
     pn_font = _font("kallisto", pn_size)
-    if len(lines) == 2:
+    if len(lines) > 1:
         cap_ = pn_font.getbbox("H")[3] - pn_font.getbbox("H")[1]
         asc_ = pn_font.getmetrics()[0]
         base1 = pn_y0 + cap_
-        pos = [(pn_x0, base1 - asc_), (pn_x0, base1 + int(cap_ * 1.32) - asc_)]
+        pos = [(pn_x0, base1 + i * int(cap_ * 1.32) - asc_) for i in range(len(lines))]
     else:
         pos = [(pn_x0, pn_y0 - pn_font.getbbox(lines[0])[1])]
     canvas = _apply_text_shadow(canvas, [(xy, t, pn_font) for xy, t in zip(pos, lines)], W, H)
