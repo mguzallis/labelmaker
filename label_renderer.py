@@ -2246,10 +2246,24 @@ def render_tape_label(
         while (pn_font_2.getlength(l1) > pn_target_w or pn_font_2.getlength(l2) > pn_target_w) and pn_size_2 > 10:
             pn_size_2 -= 1
             pn_font_2 = _font("kallisto", pn_size_2)
-        gap = int(pn_size_2 * 0.1)
-        b1, b2 = pn_font_2.getbbox(l1), pn_font_2.getbbox(l2)
-        y1_ = pn_y0 - b1[1]
-        y2_ = y1_ + (b1[3] - b1[1]) + gap - b2[1]
+        # Fixed baseline pitch (not per-line glyph bounds, which let lines with different
+        # ascenders/descenders collide), and shrink until BOTH lines fit above the bar.
+        def _two_line_metrics(font):
+            cap = font.getbbox("H")[3] - font.getbbox("H")[1]
+            desc = int(cap * 0.28)
+            pitch = int(cap * 1.32)
+            return cap, desc, pitch
+        while pn_size_2 > 10:
+            cap_, desc_, pitch_ = _two_line_metrics(pn_font_2)
+            if cap_ + pitch_ + desc_ <= available_pn_h:
+                break
+            pn_size_2 -= 1
+            pn_font_2 = _font("kallisto", pn_size_2)
+        cap_, desc_, pitch_ = _two_line_metrics(pn_font_2)
+        asc_ = pn_font_2.getmetrics()[0]
+        base1 = pn_y0 + cap_
+        y1_ = base1 - asc_
+        y2_ = base1 + pitch_ - asc_
         canvas = _apply_text_shadow(canvas, [((pn_x0, y1_), l1, pn_font_2), ((pn_x0, y2_), l2, pn_font_2)], W, H)
         draw = ImageDraw.Draw(canvas)
         draw.text((pn_x0, y1_), l1, font=pn_font_2, fill=COLOR_WHITE)
