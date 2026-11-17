@@ -139,7 +139,7 @@ def _save_upload_to_tmp(uploaded_file):
 
 
 st.set_page_config(page_title="Forza Label Generator", layout="wide")
-APP_BUILD = "2026-11-17 download fix v21"   # shown at the bottom of the page so a stale deploy is easy to spot
+APP_BUILD = "2026-11-17 download link fix v22"   # shown at the bottom of the page so a stale deploy is easy to spot
 
 
 def _load_brand_fonts_css():
@@ -892,25 +892,19 @@ with right:
         pdf_doc.save(final_pdf_buffer)
         pdf_doc.close()
 
-        # on_click="ignore" stops Streamlit re-running the script when the button is clicked.
-        # A re-run regenerates the file and invalidates the download link mid-click, which is what
-        # made the click do nothing in Chrome. (Older Streamlit versions don't know the argument.)
-        _dl_kwargs = dict(data=final_pdf_buffer.getvalue(), file_name=pdf_filename,
-                          mime="application/pdf", use_container_width=True, key="dl_label_pdf")
-        try:
-            st.download_button("Download Label (PDF)", on_click="ignore", **_dl_kwargs)
-        except TypeError:
-            st.download_button("Download Label (PDF)", **_dl_kwargs)
-
-        # Backup in case a browser or network policy blocks PDF downloads.
-        _png_buf = io.BytesIO()
-        img.convert("RGB").save(_png_buf, format="PNG", dpi=(300, 300))
-        _png_kwargs = dict(data=_png_buf.getvalue(), file_name=pdf_filename[:-4] + ".png",
-                           mime="image/png", use_container_width=True, key="dl_label_png")
-        try:
-            st.download_button("Download Label (PNG, backup)", on_click="ignore", **_png_kwargs)
-        except TypeError:
-            st.download_button("Download Label (PNG, backup)", **_png_kwargs)
+        # Download link built in the page itself (a data: link with the PDF embedded). Streamlit's own
+        # download_button fetches the file from the server a moment after the click, and on this app
+        # that fetch silently failed in Chrome. This has no server round-trip, so it can't.
+        import base64, html as _html
+        import streamlit.components.v1 as _components
+        _b64 = base64.b64encode(final_pdf_buffer.getvalue()).decode("ascii")
+        _components.html(
+            f"""<a download="{_html.escape(pdf_filename, quote=True)}" href="data:application/pdf;base64,{_b64}"
+                   style="display:block;box-sizing:border-box;text-align:center;font:600 16px 'Poppins',Arial,sans-serif;
+                          padding:10px 16px;border-radius:8px;border:1px solid #F26522;background:#F26522;
+                          color:#fff;text-decoration:none;cursor:pointer;">Download Label (PDF)</a>""",
+            height=56,
+        )
 
         # ---- Save this label's details to the master Labels tab (as a DRAFT) ----
         # Only Mike approves drafts, so this never changes approved data. It is a
