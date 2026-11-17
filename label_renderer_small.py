@@ -200,8 +200,22 @@ def render_small_label(
     draw = ImageDraw.Draw(canvas)
     draw.text((20, 552), size_label, font=ff, fill=COLOR_WHITE)
     draw.text((330, 552), f"{internal_label_number or product_code}    {lot_number}", font=ff, fill=COLOR_WHITE)
-    fl = _fit_image("assets/footer_logo.png", (860, 530, 1190, 596))
-    canvas.paste(fl, (1190 - fl.width, 596 - fl.height), fl)
+    # Logo + company address, same as the 6x4: address is 16px at 300dpi (the 6x4's physical size),
+    # the logo sits to its left at ~0.93x the address block's height.
+    addr = [("Forza Inc.", True), ("3211 Nebraska Ave, Suite 300,", False),
+            ("Council Bluffs, IA 51501", False), ("www.forzabuilt.com", True)]
+    af_b, af_l = _font("cotext_bold", 16), _font("cotext_light", 16)
+    a_line = int(16 * 1.08)
+    a_h = a_line * len(addr)
+    a_w = max((af_b if b else af_l).getlength(t) for t, b in addr)
+    ax0 = int(1188 - a_w)
+    ay0 = 596 - a_h - 2
+    fl = _fit_image("assets/footer_logo.png", (0, 0, 10000, int(a_h * 0.93)))
+    gap = int(0.0094 * 1800)
+    canvas.paste(fl, (ax0 - gap - fl.width, ay0 + (a_h - fl.height) // 2), fl)
+    for t, b in addr:
+        draw.text((ax0, ay0), t, font=(af_b if b else af_l), fill=COLOR_WHITE)
+        ay0 += a_line
 
     final = (round(w_in * dpi), round(h_in * dpi))
     if final != (W, H):
