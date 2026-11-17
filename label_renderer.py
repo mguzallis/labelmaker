@@ -2277,22 +2277,34 @@ def render_tape_label(
         f = _font("kallisto", PN_MIN)
         cands = [((PN_MIN, (product_name,), yA), 1)]
     if name_ref:
-        # Reference placement: fixed left edge, tucked right under the code box, width-limited.
+        # Reference placement: fixed left edge, tucked right under the code box. Max two lines.
+        #   A) at the reference height, stopping short of the badge
+        #   B) if that is too high for the badge, dropped to just below the badge's lower edge
+        #      and free to run out to the right edge of the boxes
         cands = []
-        y_asc = by1 + px(name_ref["gap"])
-        h_avail = px(bar_y0) - px(3.0) - y_asc
-        for n in (1, 2, 3):
+        y_ref = by1 + px(name_ref["gap"])
+        y_clear = max(y_ref, icon_bottom_px - px(5.0))     # badge's visible circle ends ~5pt above the icon box
+        for n in (1, 2):
             if n > len(words):
                 continue
             ls_ = _splits(n)
-            sz = int(100 * px(name_ref["width"]) / max(_probe.getlength(l) for l in ls_))
-            while sz >= PN_MIN:
-                need = sz * (name_ref["asc"] + (n - 1) * name_ref["pitch"] + 0.21)
-                if need <= h_avail:
-                    break
-                sz -= 1
-            if sz >= PN_MIN:
-                cands.append(((sz, ls_, y_asc), n))
+            lw = max(_probe.getlength(l) for l in ls_)
+            for tag, y_t, right in (("A", y_ref, bx1 if y_ref >= y_clear - 1 else icon_left_px - px(2.0)),
+                                    ("B", y_clear, bx1)):
+                if tag == "B" and y_clear <= y_ref + 1:
+                    continue
+                h_av = px(bar_y0) - px(3.0) - y_t
+                sz = min(int(100 * (right - pn_x0) / lw), int(box_h * PN_CAP_RATIO[n]))
+                while sz >= PN_MIN and sz * (name_ref["asc"] + (n - 1) * name_ref["pitch"] + 0.21) > h_av:
+                    sz -= 1
+                if sz >= PN_MIN:
+                    cands.append(((sz, ls_, y_t), n, tag))
+        cands = [(c, n) for c, n, _t in cands] if not cands else [(c, n) for c, n, _t in cands]
+        if cands:
+            # prefer the reference height (A) and fewer lines unless a drop / extra line is clearly larger
+            best_sz = max(c[0][0] for c in cands)
+            ok = [c for c in cands if c[0][0] >= best_sz * 0.9]
+            cands = [min(ok, key=lambda c: (c[1], c[0][2] != y_ref, -c[0][0]))]
     if not cands:
         cands = [((PN_MIN, (product_name,), y_asc), 1)]
     best_size = max(c[0][0] for c in cands)
