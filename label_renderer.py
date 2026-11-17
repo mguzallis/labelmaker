@@ -2096,7 +2096,7 @@ def render_tape_label(
     TAPE_BADGE_ZONE_BY_VERTICAL = {
         "Transportation": (380.8, 24.4, 504.7, 51.9),
         "Marine": (379.8, 30.4, 501.5, 64.2),
-        "Insulation": (379.5, 28.9, 503.7, 63.3),
+        "Insulation": (378.8, 23.1, 494.7, 55.2),
         "Industrial": (396.0, 26.2, 495.2, 53.7),
         "Construction": (381.2, 21.2, 497.3, 53.3),
     }
@@ -2104,9 +2104,9 @@ def render_tape_label(
     # white box runs under the icon, so the product code is centred in the visible part to
     # the LEFT of it (matches the real filled labels), not across the whole box.
     # Lower edge (pt) of the round industry badge, from the real filled labels.
-    TAPE_ICON_BOTTOM_BY_VERTICAL = {"Transportation": 72.0, "Marine": 73.5, "Insulation": 70.5, "Industrial": 58.5, "Construction": 66.5}
+    TAPE_ICON_BOTTOM_BY_VERTICAL = {"Transportation": 72.0, "Marine": 73.5, "Insulation": 64.3, "Industrial": 58.5, "Construction": 66.5}
     TAPE_ICON_LEFT_BY_VERTICAL = {
-        "Transportation": 472.1, "Marine": 470.6, "Insulation": 473.4,
+        "Transportation": 472.1, "Marine": 470.6, "Insulation": 467.7,
         "Industrial": 470.7, "Construction": 470.4,
     }
     badge_zone = TAPE_BADGE_ZONE_BY_VERTICAL.get(vertical_name, TAPE_BADGE_ZONE_BY_VERTICAL["Transportation"])
@@ -2117,8 +2117,12 @@ def render_tape_label(
     TAPE_GEOMETRY_BY_VERTICAL = {
         "Industrial": {"boxes": (96.6, 247.4), "footer_y": 252.5,
                        "footer_logo": (385.1, 254.5, 463.5, 276.0), "addr": (469.8, 252.8, 4.4)},
-        "Insulation": {"bars": (99.4, 114.1), "boxes": (121.6, 253.3), "footer_y": 258.4,
-                       "footer_logo": (405.5, 256.9, 470.3, 276.0), "addr": (480.7, 255.5, 3.9)},
+        # Measured off the real R-T860 Insulation label (AP982 N3). "name_ref" pins the product
+        # name to that label: left edge x, gap from the code box bottom to the first line's
+        # ascender top, line pitch / ascender as a share of font size, and the max line width.
+        "Insulation": {"bars": (83.3, 98.0), "boxes": (103.1, 253.9), "footer_y": 259.0,
+                       "footer_logo": (405.0, 256.0, 473.1, 274.7), "addr": (478.6, 254.6, 3.82),
+                       "name_ref": {"x": 379.9, "gap": 3.6, "asc": 0.74, "pitch": 1.079, "width": 106.3}},
         "Construction": {"footer_logo": (385.1, 255.5, 463.5, 277.0), "addr": (469.8, 253.8, 4.4)},
     }
     geom = TAPE_GEOMETRY_BY_VERTICAL.get(vertical_name, {})
@@ -2220,6 +2224,9 @@ def render_tape_label(
     #   B) dropped to just below the badge's lower edge, free to use the full box width
     # Two-line names use a fixed baseline pitch so the lines can't collide.
     pn_x0 = bx0
+    name_ref = geom.get("name_ref")
+    if name_ref:
+        pn_x0 = px(name_ref["x"])
     icon_left_px = px(TAPE_ICON_LEFT_BY_VERTICAL.get(vertical_name, 471.0))
     icon_bottom_px = px(TAPE_ICON_BOTTOM_BY_VERTICAL.get(vertical_name, 72.0))
     words = product_name.split()
@@ -2269,11 +2276,34 @@ def render_tape_label(
     if not cands:   # nothing fits at the minimum size: shrink to the smallest legible one-liner
         f = _font("kallisto", PN_MIN)
         cands = [((PN_MIN, (product_name,), yA), 1)]
+    if name_ref:
+        # Reference placement: fixed left edge, tucked right under the code box, width-limited.
+        cands = []
+        y_asc = by1 + px(name_ref["gap"])
+        h_avail = px(bar_y0) - px(3.0) - y_asc
+        for n in (1, 2, 3):
+            if n > len(words):
+                continue
+            ls_ = _splits(n)
+            sz = int(100 * px(name_ref["width"]) / max(_probe.getlength(l) for l in ls_))
+            while sz >= PN_MIN:
+                need = sz * (name_ref["asc"] + (n - 1) * name_ref["pitch"] + 0.21)
+                if need <= h_avail:
+                    break
+                sz -= 1
+            if sz >= PN_MIN:
+                cands.append(((sz, ls_, y_asc), n))
+    if not cands:
+        cands = [((PN_MIN, (product_name,), y_asc), 1)]
     best_size = max(c[0][0] for c in cands)
     # Prefer fewer lines unless more lines buys a clearly larger name.
     pn_size, lines, pn_y0 = min((c for c in cands if c[0][0] >= best_size * 0.9), key=lambda c: (c[1], -c[0][0]))[0]
     pn_font = _font("kallisto", pn_size)
-    if len(lines) > 1:
+    if name_ref:
+        asc_ = pn_font.getmetrics()[0]
+        base1 = pn_y0 + name_ref["asc"] * pn_size
+        pos = [(pn_x0, base1 + i * name_ref["pitch"] * pn_size - asc_) for i in range(len(lines))]
+    elif len(lines) > 1:
         cap_ = pn_font.getbbox("H")[3] - pn_font.getbbox("H")[1]
         asc_ = pn_font.getmetrics()[0]
         base1 = pn_y0 + cap_
