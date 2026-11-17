@@ -139,7 +139,7 @@ def _save_upload_to_tmp(uploaded_file):
 
 
 st.set_page_config(page_title="Forza Label Generator", layout="wide")
-APP_BUILD = "2026-11-17 no shadow on vertical name v20"   # shown at the bottom of the page so a stale deploy is easy to spot
+APP_BUILD = "2026-11-17 download fix v21"   # shown at the bottom of the page so a stale deploy is easy to spot
 
 
 def _load_brand_fonts_css():
@@ -892,13 +892,25 @@ with right:
         pdf_doc.save(final_pdf_buffer)
         pdf_doc.close()
 
-        st.download_button(
-            "Download Label (PDF)",
-            data=final_pdf_buffer.getvalue(),
-            file_name=pdf_filename,
-            mime="application/pdf",
-            use_container_width=True,
-        )
+        # on_click="ignore" stops Streamlit re-running the script when the button is clicked.
+        # A re-run regenerates the file and invalidates the download link mid-click, which is what
+        # made the click do nothing in Chrome. (Older Streamlit versions don't know the argument.)
+        _dl_kwargs = dict(data=final_pdf_buffer.getvalue(), file_name=pdf_filename,
+                          mime="application/pdf", use_container_width=True, key="dl_label_pdf")
+        try:
+            st.download_button("Download Label (PDF)", on_click="ignore", **_dl_kwargs)
+        except TypeError:
+            st.download_button("Download Label (PDF)", **_dl_kwargs)
+
+        # Backup in case a browser or network policy blocks PDF downloads.
+        _png_buf = io.BytesIO()
+        img.convert("RGB").save(_png_buf, format="PNG", dpi=(300, 300))
+        _png_kwargs = dict(data=_png_buf.getvalue(), file_name=pdf_filename[:-4] + ".png",
+                           mime="image/png", use_container_width=True, key="dl_label_png")
+        try:
+            st.download_button("Download Label (PNG, backup)", on_click="ignore", **_png_kwargs)
+        except TypeError:
+            st.download_button("Download Label (PNG, backup)", **_png_kwargs)
 
         # ---- Save this label's details to the master Labels tab (as a DRAFT) ----
         # Only Mike approves drafts, so this never changes approved data. It is a
@@ -906,7 +918,7 @@ with right:
         # Single-bar layouts (aerosol, canisters) store their one bar in "Left Bar Text".
         st.markdown("---")
         if st.button("Save label details to master (draft)", use_container_width=True,
-                     help="Saves AP #, revision, size, color and the orange-bar text to the Labels tab as a pending draft for approval."):
+                     help="Saves AP #, revision, size, color and the orange-bar text to the Labels tab as a pending draft for approval. Downloading a label does NOT do this."):
             try:
                 import master_repo
                 if use_compact_layout:
