@@ -72,7 +72,8 @@ def render_small_label(
     vf = _font("kallisto", vsize)
     vbb = vf.getbbox(vertical_name)
     vy = py0 - 10 - (vbb[3] - vbb[1]) - vbb[1]
-    items = [((px0, vy), vertical_name, vf)]
+    vn_xy = (px0, vy)
+    items = []
     # product name: one line, shrunk to fit under the box (reaches the icon's right edge)
     pn_avail = (icon_x + ICON) - px0
     psize = 32
@@ -84,8 +85,8 @@ def render_small_label(
     items.append(((px0, 174 - pbb[1]), product_name or "", pf))
     canvas = _apply_text_shadow(canvas, items, W, H)
     draw = ImageDraw.Draw(canvas)
-    draw.text(items[0][0], vertical_name, font=vf, fill=COLOR_WHITE)
-    for (xy, l, f) in items[1:]:
+    draw.text(vn_xy, vertical_name, font=vf, fill=COLOR_WHITE)   # vertical name: no drop shadow
+    for (xy, l, f) in items:
         draw.text(xy, l, font=f, fill=COLOR_WHITE)
 
     draw.rounded_rectangle((px0, py0, px1, py1), 10, fill=COLOR_WHITE)

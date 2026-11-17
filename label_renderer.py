@@ -754,7 +754,7 @@ def render_compact_label(
 
         vx0, vy0, vx1, vy1 = compact_zone_px("vertical_name", W, H, dimension_group=dimension_group)
         _vn_font = _font("kallisto", int(0.052 * H))
-        canvas = _apply_text_shadow(canvas, [((vx0, vy0), vertical_name, _vn_font)], W, H)
+        # (no drop shadow on the vertical name)
         draw = ImageDraw.Draw(canvas)
         draw.text((vx0, vy0), vertical_name, font=_vn_font, fill=COLOR_WHITE)
 
@@ -1125,7 +1125,7 @@ def render_label(
         vert_name_gap = int((by1 - by0) * 0.12)
         vn_bbox = vert_name_font.getbbox(vertical_name)
         vy0 = by0 - vert_name_gap - (vn_bbox[3] - vn_bbox[1]) - vn_bbox[1]
-        canvas = _apply_text_shadow(canvas, [((vx0, vy0), vertical_name, vert_name_font)], W, H)
+        # (no drop shadow on the vertical name)
         draw = ImageDraw.Draw(canvas)
         draw.text((vx0, vy0), vertical_name, font=vert_name_font, fill=COLOR_WHITE)
 
@@ -2184,7 +2184,7 @@ def render_tape_label(
     if not using_baked_background:
         vx0, vy0 = px(380.6), px(7.3)
         _vn_font = _font("kallisto", int(0.045 * H))
-        canvas = _apply_text_shadow(canvas, [((vx0, vy0), vertical_name, _vn_font)], W, H)
+        # (no drop shadow on the vertical name)
         draw = ImageDraw.Draw(canvas)
         draw.text((vx0, vy0), vertical_name, font=_vn_font, fill=COLOR_WHITE)
         draw.rounded_rectangle([bx0, by0, bx1, by1], radius=int(0.01 * W), fill=COLOR_WHITE)
