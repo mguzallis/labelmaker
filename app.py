@@ -139,7 +139,7 @@ def _save_upload_to_tmp(uploaded_file):
 
 
 st.set_page_config(page_title="Forza Label Generator", layout="wide")
-APP_BUILD = "2026-11-17 insulation name 2-line max v17"   # shown at the bottom of the page so a stale deploy is easy to spot
+APP_BUILD = "2026-11-17 insulation name fills height v18"   # shown at the bottom of the page so a stale deploy is easy to spot
 
 
 def _load_brand_fonts_css():

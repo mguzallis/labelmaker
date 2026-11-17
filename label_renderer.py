@@ -2122,7 +2122,7 @@ def render_tape_label(
         # ascender top, line pitch / ascender as a share of font size, and the max line width.
         "Insulation": {"bars": (99.4, 114.1), "boxes": (121.6, 253.3), "footer_y": 258.4,
                        "footer_logo": (405.5, 256.9, 470.3, 276.0), "addr": (480.7, 255.5, 3.9),
-                       "name_ref": {"x": 379.9, "gap": 3.6, "asc": 0.74, "pitch": 1.079, "width": 106.3}},
+                       "name_ref": {"right": 538.0, "x": 379.9, "gap": 3.6, "asc": 0.74, "pitch": 1.079, "width": 106.3}},
         "Construction": {"footer_logo": (385.1, 255.5, 463.5, 277.0), "addr": (469.8, 253.8, 4.4)},
     }
     geom = TAPE_GEOMETRY_BY_VERTICAL.get(vertical_name, {})
@@ -2289,12 +2289,14 @@ def render_tape_label(
                 continue
             ls_ = _splits(n)
             lw = max(_probe.getlength(l) for l in ls_)
-            for tag, y_t, right in (("A", y_ref, bx1 if y_ref >= y_clear - 1 else icon_left_px - px(2.0)),
-                                    ("B", y_clear, bx1)):
+            for tag, y_t, right in (("A", y_ref, px(name_ref["right"]) if y_ref >= y_clear - 1 else icon_left_px - px(2.0)),
+                                    ("B", y_clear, px(name_ref["right"]))):
                 if tag == "B" and y_clear <= y_ref + 1:
                     continue
                 h_av = px(bar_y0) - px(3.0) - y_t
-                sz = min(int(100 * (right - pn_x0) / lw), int(box_h * PN_CAP_RATIO[n]))
+                sz = int(100 * (right - pn_x0) / lw)
+                if n == 1:
+                    sz = min(sz, int(box_h * PN_CAP_RATIO[1]))   # two lines may grow to fill the height
                 while sz >= PN_MIN and sz * (name_ref["asc"] + (n - 1) * name_ref["pitch"] + 0.21) > h_av:
                     sz -= 1
                 if sz >= PN_MIN:
