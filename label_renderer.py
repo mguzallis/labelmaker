@@ -2315,6 +2315,9 @@ def render_tape_label(
     pn_font = _font("kallisto", pn_size)
     if name_ref:
         asc_ = pn_font.getmetrics()[0]
+        # centre the block (cap-top of line 1 to baseline of the last line) between the white box and the red bar
+        _blk = pn_size * (name_ref["asc"] + (len(lines) - 1) * name_ref["pitch"])
+        pn_y0 = max(pn_y0, by1 + (px(bar_y0) - by1 - _blk) / 2)
         base1 = pn_y0 + name_ref["asc"] * pn_size
         pos = [(pn_x0, base1 + i * name_ref["pitch"] * pn_size - asc_) for i in range(len(lines))]
     elif len(lines) > 1:
