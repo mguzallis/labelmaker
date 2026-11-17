@@ -139,7 +139,7 @@ def _save_upload_to_tmp(uploaded_file):
 
 
 st.set_page_config(page_title="Forza Label Generator", layout="wide")
-APP_BUILD = "2026-11-17 download link fix v22"   # shown at the bottom of the page so a stale deploy is easy to spot
+APP_BUILD = "2026-11-17 download blob link v23"   # shown at the bottom of the page so a stale deploy is easy to spot
 
 
 def _load_brand_fonts_css():
@@ -895,15 +895,26 @@ with right:
         # Download link built in the page itself (a data: link with the PDF embedded). Streamlit's own
         # download_button fetches the file from the server a moment after the click, and on this app
         # that fetch silently failed in Chrome. This has no server round-trip, so it can't.
-        import base64, html as _html
+        import base64, json
         import streamlit.components.v1 as _components
         _b64 = base64.b64encode(final_pdf_buffer.getvalue()).decode("ascii")
         _components.html(
-            f"""<a download="{_html.escape(pdf_filename, quote=True)}" href="data:application/pdf;base64,{_b64}"
-                   style="display:block;box-sizing:border-box;text-align:center;font:600 16px 'Poppins',Arial,sans-serif;
+            f"""<a id="dl" href="#" style="display:block;box-sizing:border-box;text-align:center;font:600 16px 'Poppins',Arial,sans-serif;
                           padding:10px 16px;border-radius:8px;border:1px solid #F26522;background:#F26522;
-                          color:#fff;text-decoration:none;cursor:pointer;">Download Label (PDF)</a>""",
-            height=56,
+                          color:#fff;text-decoration:none;cursor:pointer;">Download Label (PDF)</a>
+                <div style="text-align:center;margin-top:6px;font:13px Arial,sans-serif;">
+                  <a id="op" href="#" target="_blank" rel="noopener" style="color:#666;">Not downloading? Open the PDF in a new tab</a></div>
+                <script>
+                  (function() {{
+                    var bin = atob("{_b64}"), n = bin.length, u8 = new Uint8Array(n);
+                    for (var i = 0; i < n; i++) u8[i] = bin.charCodeAt(i);
+                    var url = URL.createObjectURL(new Blob([u8], {{type: "application/pdf"}}));
+                    var dl = document.getElementById("dl");
+                    dl.href = url; dl.download = {json.dumps(pdf_filename)};
+                    document.getElementById("op").href = url;
+                  }})();
+                </script>""",
+            height=84,
         )
 
         # ---- Save this label's details to the master Labels tab (as a DRAFT) ----
