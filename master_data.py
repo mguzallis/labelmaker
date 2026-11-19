@@ -98,15 +98,54 @@ def tds_for(code):
 _MAP_LINE = re.compile(r"^(?P<label>.*?)\s*\[(?P<file>[^\]]+)\]\s*$")
 
 
+def _is_latest(row):
+    return (row.get("Is Latest Version") or "").strip().upper() == "Y"
+
+
+def _sds_row(file_name):
+    for r in _rows("sds"):
+        if (r.get("File Name") or "").strip() == file_name:
+            return r
+    return None
+
+
+def latest_file_for(file_name):
+    """The SDS file to use in place of `file_name`: itself when its row is flagged
+    Is Latest Version = Y, otherwise the newest Y row in the same product folder.
+    None when the master has no latest version for it (superseded files are never used)."""
+    row = _sds_row(file_name)
+    if row is None:
+        return None
+    if _is_latest(row):
+        return file_name
+    folder = (row.get("Product Folder") or "").strip()
+    cands = [r for r in _rows("sds")
+             if (r.get("Product Folder") or "").strip() == folder and _is_latest(r)]
+    if not cands:
+        return None
+    return max(cands, key=lambda r: (r.get("File Date") or ""))["File Name"].strip()
+
+
 def sds_choices(code):
-    """[{label, file_name}] for the product; empty when the master has no SDS."""
+    """[{label, file_name}] for the product; empty when the master has no SDS.
+    Only Is Latest Version = Y files are offered: a mapped file that has been
+    superseded is swapped for its folder's latest SDS, or dropped if there is none."""
     for r in _rows("product_sds_map"):
         if (r.get("Product Code") or "").strip() == code:
-            out = []
+            out, seen = [], set()
             for line in _lines(r.get("SDS File(s)")):
                 m = _MAP_LINE.match(line)
-                if m:
-                    out.append({"label": m["label"].strip() or m["file"], "file_name": m["file"].strip()})
+                if not m:
+                    continue
+                f = m["file"].strip()
+                latest = latest_file_for(f)
+                if not latest or latest in seen:
+                    continue
+                seen.add(latest)
+                label = m["label"].strip() or f
+                if latest != f:
+                    label = f"{label} (latest)"
+                out.append({"label": label, "file_name": latest})
             return out
     return []
 
@@ -200,12 +239,21 @@ def _clean_block(s):
     return s
 
 
+# An H-code inside parentheses is explanatory text ("... (see H351)"), not a statement
+_PAREN_CODE = re.compile(r"\([^()]*\bH\d{3}[^()]*\)")
+
+
 def sds_data_for(file_name):
-    """parse_sds()-shaped dict for one SDS file in the master, or None."""
+    """parse_sds()-shaped dict for one SDS file in the master, or None.
+    Only a row flagged Is Latest Version = Y is used (a superseded file resolves to
+    its folder's latest SDS). H-codes come only from that row's Hazard Statements field."""
+    file_name = latest_file_for(file_name)
+    if not file_name:
+        return None
     for r in _rows("sds"):
-        if (r.get("File Name") or "").strip() != file_name:
+        if (r.get("File Name") or "").strip() != file_name or not _is_latest(r):
             continue
-        hazards = _statements(r.get("Hazard Statements"), _H)
+        hazards = _statements(_PAREN_CODE.sub("", r.get("Hazard Statements") or ""), _H)
         for h in hazards:
             h.setdefault("code", "")
         signal = (r.get("Signal Word") or "").strip()
